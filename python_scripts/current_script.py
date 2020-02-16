@@ -1,8 +1,8 @@
 from bpy import ops, context, data
-import os
-from numpy.random import random
+import numpy as np
 
 
+# UTILS
 def randomize_light(x, y, z, undo_random=False):
     x = x * 15
     y = y * 15
@@ -25,8 +25,8 @@ def randomize_light(x, y, z, undo_random=False):
 
 def randomize_object_of_interest(x, y, rot, undo_random=False):
     rot = rot * 5
-    x = x * 1e-3
-    y = y * 1e-3
+    x = x * 1e-1
+    y = y * 1e-1
 
     if undo_random:
         rot = -rot
@@ -37,17 +37,18 @@ def randomize_object_of_interest(x, y, rot, undo_random=False):
     for obj in pcb_collection.objects:
         obj.select_set(True)
 
-        ops.transform.rotate(value=rot, orient_axis='Z', orient_type='GIMBAL',
+        ops.transform.rotate(value=rot, orient_axis='Z', orient_type='GLOBAL',
                              orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)),
-                             orient_matrix_type='GIMBAL', constraint_axis=(False, False, True), mirror=True,
+                             orient_matrix_type='GLOBAL', constraint_axis=(False, False, True), mirror=True,
                              use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1,
                              use_proportional_connected=False, use_proportional_projected=False)
 
-        ops.transform.translate(value=(x, y, 0), orient_type='GIMBAL',
+        ops.transform.translate(value=(x, y, 0), orient_type='GLOBAL',
                                 orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)),
-                                orient_matrix_type='GIMBAL', constraint_axis=(True, True, False), mirror=True,
+                                orient_matrix_type='GLOBAL', constraint_axis=(True, True, False), mirror=True,
                                 use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1,
                                 use_proportional_connected=False, use_proportional_projected=False)
+
         obj.select_set(False)
 
 
@@ -61,7 +62,8 @@ context.scene.camera = data.objects["Camera"]
 
 for i in range(5):
     context.scene.render.filepath = render_folder + str(i) + "_labeled_"
-    r = random(6)
+    r = np.random.random(6)
+    # r = np.asarray([i] * 6)
     r = r - 0.5
     # Change light position
     randomize_light(r[0], r[1], r[2])

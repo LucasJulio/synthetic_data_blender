@@ -1,5 +1,4 @@
 from bpy import ops, context, data
-import os
 from numpy.random import random
 
 blend_file = "ORIGINAL_plus_LABELS.blend"
