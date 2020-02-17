@@ -3,10 +3,7 @@ import numpy as np
 
 
 # UTILS
-def randomize_light(x, y, z, undo_random=False):
-    x = x * 15
-    y = y * 15
-    z = z * 10
+def move_light(x, y, z, undo_random=False):
     if undo_random:
         x = -x
         y = -y
@@ -23,33 +20,43 @@ def randomize_light(x, y, z, undo_random=False):
     light_object.select_set(False)
 
 
-def randomize_object_of_interest(x, y, rot, undo_random=False):
-    rot = rot * 5
-    x = x * 1e-1
-    y = y * 1e-1
+def set_camera_focal_length(fl):
+    camera_object = data.objects["Camera"]
+    camera_object.select_set(True)
+    camera_object.data.lens = fl
+    camera_object.select_set(False)
+
+
+def set_render_exposure(exp):
+    context.scene.cycles.film_exposure = exp
+
+
+def change_ooi_position(x, y, rot, undo_random=False):
+    """
+    Changes object of interest positions
+    """
 
     if undo_random:
         rot = -rot
         x = -x
         y = -y
 
-    pcb_collection = data.collections.get("Placa")
-    for obj in pcb_collection.objects:
-        obj.select_set(True)
+    obj = data.objects["Substrato"]
+    obj.select_set(True)
 
-        ops.transform.rotate(value=rot, orient_axis='Z', orient_type='GLOBAL',
-                             orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)),
-                             orient_matrix_type='GLOBAL', constraint_axis=(False, False, True), mirror=True,
-                             use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1,
-                             use_proportional_connected=False, use_proportional_projected=False)
+    ops.transform.rotate(value=rot, orient_axis='Z', orient_type='GLOBAL',
+                         orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)),
+                         orient_matrix_type='GLOBAL', constraint_axis=(False, False, False), mirror=True,
+                         use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1,
+                         use_proportional_connected=False, use_proportional_projected=False)
 
-        ops.transform.translate(value=(x, y, 0), orient_type='GLOBAL',
-                                orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)),
-                                orient_matrix_type='GLOBAL', constraint_axis=(True, True, False), mirror=True,
-                                use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1,
-                                use_proportional_connected=False, use_proportional_projected=False)
+    ops.transform.translate(value=(x, y, 0), orient_type='GLOBAL',
+                            orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)),
+                            orient_matrix_type='GLOBAL', constraint_axis=(True, True, False), mirror=True,
+                            use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1,
+                            use_proportional_connected=False, use_proportional_projected=False)
 
-        obj.select_set(False)
+    obj.select_set(False)
 
 
 blend_file = "camera_tracking.blend"
@@ -63,13 +70,19 @@ context.scene.camera = data.objects["Camera"]
 for i in range(5):
     context.scene.render.filepath = render_folder + str(i) + "_labeled_"
     r = np.random.random(6)
-    # r = np.asarray([i] * 6)
     r = r - 0.5
-    # Change light position
-    randomize_light(r[0], r[1], r[2])
 
-    # Rotate PCB
-    randomize_object_of_interest(r[3], r[4], r[5])
+    x_light, y_light, z_light = np.random.random()*15, np.random.random()*15, np.random.random()*10
+    move_light(x_light, y_light, z_light)
+
+    x_ooi, y_ooi, z_ooi = np.random.random() * 0.1, np.random.random() * 0.1, np.random.random() * 7
+    change_ooi_position(x_ooi, y_ooi, z_ooi)
+
+    focal_length = np.random.randint(35, 80)
+    set_camera_focal_length(focal_length)
+
+    exposure = np.random.random() * 5.4 + 0.6
+    set_render_exposure(exposure)
 
     # Nodes and renders
     nodes = data.scenes[0].node_tree.nodes
@@ -78,5 +91,5 @@ for i in range(5):
     ops.render.render(write_still=True, use_viewport=True)
 
     # Move everything back to where they were
-    randomize_light(r[0], r[1], r[2], undo_random=True)
-    randomize_object_of_interest(r[3], r[4], r[5], undo_random=True)
+    move_light(r[0], r[1], r[2], undo_random=True)
+    change_ooi_position(r[3], r[4], r[5], undo_random=True)
