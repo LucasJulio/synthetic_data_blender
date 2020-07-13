@@ -59,7 +59,7 @@ def change_ooi_position(x, y, rot, undo_random=False):
     obj.select_set(False)
 
 
-blend_file = "camera_tracking.blend"
+blend_file = "new_textures.blend"
 blend_folder = "/home/ribeiro-desktop/blender_experiments/blend_files/"
 render_folder = "/home/ribeiro-desktop/blender_experiments/render_results/"
 ops.wm.open_mainfile(filepath=blend_folder + blend_file)
@@ -67,7 +67,7 @@ ops.wm.open_mainfile(filepath=blend_folder + blend_file)
 # Set camera
 context.scene.camera = data.objects["Camera"]
 
-for i in range(5):
+for i in range(100):
     context.scene.render.filepath = render_folder + str(i) + "_labeled_"
     r = np.random.random(6)
     r = r - 0.5

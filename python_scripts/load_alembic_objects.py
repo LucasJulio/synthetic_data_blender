@@ -13,4 +13,4 @@ for file in os.listdir(objects_folder_path):
 # Set camera
 context.scene.camera = data.objects['Camera']
 context.scene.render.filepath = render_folder_path + "/sucesso.jpg"
-ops.render.render(write_still = True)
+ops.render.render(write_still=True)
