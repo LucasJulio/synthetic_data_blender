@@ -59,7 +59,7 @@ def change_ooi_position(x, y, rot, undo_random=False):
     obj.select_set(False)
 
 
-blend_file = "segmentation_with_new_colors.blend"
+blend_file = "new_textures.blend"
 blend_folder = "/home/ribeiro-desktop/blender_experiments/blend_files/"
 render_folder = "/home/ribeiro-desktop/blender_experiments/render_results/"
 ops.wm.open_mainfile(filepath=blend_folder + blend_file)
