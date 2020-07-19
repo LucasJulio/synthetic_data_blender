@@ -9,7 +9,7 @@ def move_light(x, y, z, undo_random=False):
         y = -y
         z = -z
 
-    light_object = data.objects["Luz_direcional"]
+    light_object = data.objects["Luz"]
     light_object.select_set(True)
     context.view_layer.objects.active = light_object
     ops.transform.translate(value=(x, y, z), orient_type='GLOBAL',
@@ -41,28 +41,25 @@ def change_ooi_position(x, y, rot, undo_random=False):
         x = -x
         y = -y
 
-    obj = data.objects["Substrato"]  # TODO: Inconveniently requires that all other parts are "locked" to substrate. Fix
+    obj = data.objects["Substrato"]
     obj.select_set(True)
-
 
     ops.transform.rotate(value=rot, orient_axis='Z', orient_type='GLOBAL',
                          orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)),
-                         orient_matrix_type='GLOBAL', constraint_axis=(False, False, False), mirror=False,
+                         orient_matrix_type='GLOBAL', constraint_axis=(False, False, False), mirror=True,
                          use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1,
                          use_proportional_connected=False, use_proportional_projected=False)
 
-    '''
     ops.transform.translate(value=(x, y, 0), orient_type='GLOBAL',
                             orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)),
                             orient_matrix_type='GLOBAL', constraint_axis=(True, True, False), mirror=True,
                             use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1,
                             use_proportional_connected=False, use_proportional_projected=False)
-    '''
 
     obj.select_set(False)
 
 
-blend_file = "translucido.blend"
+blend_file = "segmentation_with_new_colors.blend"
 blend_folder = "/home/ribeiro-desktop/blender_experiments/blend_files/"
 render_folder = "/home/ribeiro-desktop/blender_experiments/render_results/"
 ops.wm.open_mainfile(filepath=blend_folder + blend_file)
@@ -70,9 +67,8 @@ ops.wm.open_mainfile(filepath=blend_folder + blend_file)
 # Set camera
 context.scene.camera = data.objects["Camera"]
 
-for i in range(10):
+for i in range(100):
     context.scene.render.filepath = render_folder + str(i) + "_labeled_"
-    # context.scene.render.filepath = render_folder + "test" + "_labeled_"
     r = np.random.random(6)
     r = r - 0.5
 
@@ -92,7 +88,6 @@ for i in range(10):
     nodes = data.scenes[0].node_tree.nodes
     file_output_node = nodes["File Output"]
     file_output_node.file_slots[0].path = str(i) + "_original"
-    # file_output_node.file_slots[0].path = "test" + "_original"
     ops.render.render(write_still=True, use_viewport=True)
 
     # Move everything back to where they were
