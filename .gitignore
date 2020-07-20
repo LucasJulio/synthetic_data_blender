@@ -134,3 +134,5 @@ real_PCB_images/
 hp_tunning.py
 
 render_results/
+
+*.png
