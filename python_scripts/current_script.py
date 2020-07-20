@@ -51,6 +51,7 @@ def change_ooi_position(x, y, rot, undo_random=False):
                          use_proportional_edit=False, proportional_edit_falloff='SMOOTH', proportional_size=1,
                          use_proportional_connected=False, use_proportional_projected=False)
 
+    # TODO: fix this and make it work once again
     '''
     ops.transform.translate(value=(x, y, 0), orient_type='GLOBAL',
                             orient_matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)),
@@ -70,9 +71,10 @@ ops.wm.open_mainfile(filepath=blend_folder + blend_file)
 # Set camera
 context.scene.camera = data.objects["Camera"]
 
-for i in range(10):
-    context.scene.render.filepath = render_folder + str(i) + "_labeled_"
-    # context.scene.render.filepath = render_folder + "test" + "_labeled_"
+
+for i in range(0, 2001):
+    img_id = str(i).zfill(7)
+    context.scene.render.filepath = render_folder + "vm_" + img_id + ".png"  # Visible Maps
     r = np.random.random(6)
     r = r - 0.5
 
@@ -91,8 +93,7 @@ for i in range(10):
     # Nodes and renders
     nodes = data.scenes[0].node_tree.nodes
     file_output_node = nodes["File Output"]
-    file_output_node.file_slots[0].path = str(i) + "_original"
-    # file_output_node.file_slots[0].path = "test" + "_original"
+    file_output_node.file_slots[0].path = "i_" + img_id + ".png"  # Inputs
     ops.render.render(write_still=True, use_viewport=True)
 
     # Move everything back to where they were

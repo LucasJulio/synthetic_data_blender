@@ -4,8 +4,8 @@ from glob import glob
 import os
 
 DATASETS_MAIN_PATH = os.path.expanduser("~/blender_experiments/datasets/")
-SELECTED_DATASET = "sample_dataset"
-NUMBER_OF_CLASSES = 3
+SELECTED_DATASET = "PCB_v1"
+NUMBER_OF_CLASSES = 5
 
 
 def convert_segmentation_to_mapping(img):
@@ -16,7 +16,7 @@ def convert_segmentation_to_mapping(img):
     low_bound = np.clip(val, 0, 255)
     up_bound = np.clip(low_bound + step, 1, 255)
     for i in range(1, NUMBER_OF_CLASSES + 1):
-        m_img[np.logical_and(inter >= low_bound, inter < up_bound)] = i
+        m_img[np.logical_and(inter >= low_bound, inter <= up_bound)] = i
         val = val + step
         low_bound = np.clip(val, 1, 255)
         up_bound = np.clip(low_bound + step, 1, 255)
