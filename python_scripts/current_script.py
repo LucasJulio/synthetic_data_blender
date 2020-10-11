@@ -2,7 +2,7 @@ from bpy import ops, context, data
 import numpy as np
 import os
 
-ENVIRONMENT_ROT_DIVISIONS=20
+ENVIRONMENT_ROT_DIVISIONS=60
 PROB_SUPP_LIGHT1_ON=0.3
 PROB_SUPP_LIGHT2_ON=0.3
 
@@ -161,7 +161,8 @@ def unhide_objects():
     """
     for obj in data.collections['Arduino'].all_objects:
         print(obj)
-        obj.hide_render=False
+        if obj is not None:
+            obj.hide_render=False
 
 def rotate_camera(angle_pitch=None, angle_yaw=None):
     handler=data.objects['Handler camera']
@@ -227,7 +228,7 @@ render_folder = os.path.join(root_folder,'datasets','arduino_uno')
 # Set camera
 context.scene.camera = data.objects["Camera"]
 unhide_objects()
-for i in range(0, 20):
+for i in range(0, 200):
     img_id = str(i).zfill(7)
     # context.scene.render.filepath = render_folder + "vm_" + img_id + ".png"  # Visible Maps
     r = np.random.random(6)
@@ -255,9 +256,9 @@ for i in range(0, 20):
     # Nodes and renders
     nodes = data.scenes[0].node_tree.nodes
     file_output_node = nodes["File Output"]
-    file_output_node.file_slots[0].path = "vm_" + img_id + ".png"  # Visible Maps
+    file_output_node.file_slots[0].path = "vm_" + img_id +'#' # Visible Maps
     file_output_node = nodes["File Output.001"]
-    file_output_node.file_slots[0].path = "i_" + img_id + ".png"  # Inputs
+    file_output_node.file_slots[0].path = "i_" + img_id +'#' # Inputss
     ops.render.render(write_still=True, use_viewport=True)
 
     # Hide support lights
