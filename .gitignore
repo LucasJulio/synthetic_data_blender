@@ -135,10 +135,10 @@ hp_tunning.py
 
 render_results/
 
-*.png
-
 neural_networks/codes/utils/PCB_v1_000/
 
 neural_networks/logs/
 
 neural_networks/models/
+
+datasets/*
