@@ -21,8 +21,6 @@ def position_camera(delta_x=None, delta_y=None):
     if delta_y is None:
         delta_y=(np.random.random()*2*MAX_DELTA_Y_CAMERA)-MAX_DELTA_Y_CAMERA
 
-
-
     handler.delta_location[0]=delta_x  #X or Pich
     handler.delta_location[1]=delta_y  #Z or Yaw
 
