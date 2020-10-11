@@ -1,4 +1,4 @@
-from bpy import ops, context, data
+from bpy import ops, context, data, types
 import numpy as np
 import os
 
@@ -135,19 +135,20 @@ def hide_objects():
 
 
     for obj in data.collections['Arduino'].all_objects:
-        print(obj.name)
-        if obj.users_collection[0].name != 'Texto':
-            obj.hide_render=decision(PROB_HIDE_OBJ)
+        # print(obj.name)
+        if (obj is not None) and isinstance(obj,types.Object):
+            if obj.users_collection[0].name != 'Texto':
+                obj.hide_render=decision(PROB_HIDE_OBJ)
 
-        # Increased Probability of hiding text
-        elif obj.users_collection[0].name == 'Texto':
-            obj.hide_render=decision(PROB_HIDE_TEXT)
+            # Increased Probability of hiding text
+            elif obj.users_collection[0].name == 'Texto':
+                obj.hide_render=decision(PROB_HIDE_TEXT)
 
     # Pass decision to objects children
     for obj in data.collections['Arduino'].all_objects:
 
         # Check if obj has children
-        if obj is not None:
+        if (obj is not None) and isinstance(obj,types.Object):
             if len(obj.children)>0:
                 # Pass decision to children of obj
                 pass_hide_children(obj)
@@ -160,8 +161,9 @@ def unhide_objects():
     Unhide all objects of collection Arduino
     """
     for obj in data.collections['Arduino'].all_objects:
-        print(obj)
-        if obj is not None:
+        print(type(obj))
+        if (obj is not None) and isinstance(obj,types.Object):
+            print(type(obj))
             obj.hide_render=False
 
 def rotate_camera(angle_pitch=None, angle_yaw=None):
@@ -228,8 +230,8 @@ render_folder = os.path.join(root_folder,'datasets','arduino_uno')
 # Set camera
 context.scene.camera = data.objects["Camera"]
 unhide_objects()
-first_image=204
-for i in range(first_image, first_image+797):
+# first_image=209
+for i in range(0, 1000):
     img_id = str(i).zfill(7)
     # context.scene.render.filepath = render_folder + "vm_" + img_id + ".png"  # Visible Maps
     r = np.random.random(6)
