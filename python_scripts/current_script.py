@@ -228,7 +228,8 @@ render_folder = os.path.join(root_folder,'datasets','arduino_uno')
 # Set camera
 context.scene.camera = data.objects["Camera"]
 unhide_objects()
-for i in range(0, 200):
+first_image=204
+for i in range(first_image, first_image+797):
     img_id = str(i).zfill(7)
     # context.scene.render.filepath = render_folder + "vm_" + img_id + ".png"  # Visible Maps
     r = np.random.random(6)
