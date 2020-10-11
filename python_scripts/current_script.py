@@ -3,8 +3,8 @@ import numpy as np
 import os
 
 ENVIRONMENT_ROT_DIVISIONS=20
-PROB_SUPP_LIGHT1_ON=0.2
-PROB_SUPP_LIGHT2_ON=0.2
+PROB_SUPP_LIGHT1_ON=0.3
+PROB_SUPP_LIGHT2_ON=0.3
 
 PROB_HIDE_OBJ=0.1
 PROB_HIDE_TEXT=0.6
@@ -135,7 +135,7 @@ def hide_objects():
 
 
     for obj in data.collections['Arduino'].all_objects:
-        print(obj)
+        print(obj.name)
         if obj.users_collection[0].name != 'Texto':
             obj.hide_render=decision(PROB_HIDE_OBJ)
 
@@ -147,9 +147,10 @@ def hide_objects():
     for obj in data.collections['Arduino'].all_objects:
 
         # Check if obj has children
-        if len(obj.children)>0:
-            # Pass decision to children of obj
-            pass_hide_children(obj)
+        if obj is not None:
+            if len(obj.children)>0:
+                # Pass decision to children of obj
+                pass_hide_children(obj)
 
     # Unhide Substrato
     data.objects['Substrato'].hide_render=False
@@ -159,6 +160,7 @@ def unhide_objects():
     Unhide all objects of collection Arduino
     """
     for obj in data.collections['Arduino'].all_objects:
+        print(obj)
         obj.hide_render=False
 
 def rotate_camera(angle_pitch=None, angle_yaw=None):
@@ -220,12 +222,12 @@ render_folder = os.path.join(root_folder,'datasets','arduino_uno')
 
 
 
-ops.wm.open_mainfile(filepath= blend_file)
+# ops.wm.open_mainfile(filepath= blend_file)
 
 # Set camera
 context.scene.camera = data.objects["Camera"]
-
-for i in range(0, 2):
+unhide_objects()
+for i in range(0, 20):
     img_id = str(i).zfill(7)
     # context.scene.render.filepath = render_folder + "vm_" + img_id + ".png"  # Visible Maps
     r = np.random.random(6)
@@ -257,6 +259,10 @@ for i in range(0, 2):
     file_output_node = nodes["File Output.001"]
     file_output_node.file_slots[0].path = "i_" + img_id + ".png"  # Inputs
     ops.render.render(write_still=True, use_viewport=True)
+
+    # Hide support lights
+    data.objects["Luz suporte 1"].hide_render = True
+    data.objects["Luz suporte 2"].hide_render = True
 
     unhide_objects()
 
