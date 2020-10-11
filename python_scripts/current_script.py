@@ -135,7 +135,6 @@ def hide_objects():
 
 
     for obj in data.collections['Arduino'].all_objects:
-        print(obj)
         if obj.users_collection[0].name != 'Texto':
             obj.hide_render=decision(PROB_HIDE_OBJ)
 
