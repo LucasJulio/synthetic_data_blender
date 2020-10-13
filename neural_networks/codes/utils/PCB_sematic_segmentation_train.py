@@ -89,9 +89,9 @@ def load_image_test(datapoint):
     return input_image, input_mask
 
 
-TRAIN_LENGTH = 1500
-BATCH_SIZE = 32
-BUFFER_SIZE = 1500
+TRAIN_LENGTH = 3000
+BATCH_SIZE = 16
+BUFFER_SIZE = 3000
 STEPS_PER_EPOCH = TRAIN_LENGTH // BATCH_SIZE
 
 train = dataset['train'].map(load_image_train, num_parallel_calls=tf.data.experimental.AUTOTUNE)
@@ -202,7 +202,7 @@ class DisplayCallback(tf.keras.callbacks.Callback):
 checkpoint = ModelCheckpoint(filepath="/home/ribeiro-desktop/blender_experiments/neural_networks/logs/current_run",
                              save_best_only=True)
 
-VALIDATION_LENGTH = 500
+VALIDATION_LENGTH = 1000
 EPOCHS = 40
 VAL_SUBSPLITS = 10
 VALIDATION_STEPS = VALIDATION_LENGTH//BATCH_SIZE//VAL_SUBSPLITS
@@ -236,11 +236,6 @@ for img, mask in test.take(1):
     predicted_mask = create_mask(best.predict(test_image[tf.newaxis, ...]))
     display([test_image, test_mask, predicted_mask])
 
-'''
-a = test.as_numpy_iterator().next()
-plt.imshow(a[0])
-plt.show()
-'''
 
 print("Train finished. Making some inferences")
 
