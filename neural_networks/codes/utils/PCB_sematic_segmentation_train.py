@@ -2,6 +2,7 @@ import os
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
+import gc
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow_examples.models.pix2pix import pix2pix
@@ -33,7 +34,7 @@ dataset = dataset_builder.as_dataset()
 
 def normalize(input_image, input_mask):
     input_image = tf.cast(input_image, tf.float32) / 255.0
-    input_mask -= 1
+    # input_mask -= 1
     return input_image, input_mask
 
 
@@ -64,10 +65,13 @@ def augment_data(input_img, input_mask):
 
 @tf.function
 def load_image_train(datapoint):
-    input_image = tf.image.resize_with_crop_or_pad(datapoint['image'], 540, 540)  # eliminates unnecessary borders
-    input_mask = tf.image.resize_with_crop_or_pad(datapoint['segmentation_mask'], 540, 540)
-    input_image = tf.image.resize(input_image, (448, 448))
-    input_mask = tf.image.resize(input_mask, (448, 448))
+    # input_image = tf.image.resize_with_crop_or_pad(datapoint['image'], 540, 540)  # eliminates unnecessary borders
+    # input_mask = tf.image.resize_with_crop_or_pad(datapoint['segmentation_mask'], 540, 540)
+    # input_image = tf.image.resize(input_image, (448, 448))
+    # input_mask = tf.image.resize(input_mask, (448, 448))
+
+    input_image = tf.image.resize(datapoint['image'], (448, 448))
+    input_mask = tf.image.resize(datapoint['segmentation_mask'], (448, 448))
 
     if tf.random.uniform(()) > 0.5:
         input_image = tf.image.flip_left_right(input_image)
@@ -79,20 +83,23 @@ def load_image_train(datapoint):
 
 
 def load_image_test(datapoint):
-    input_image = tf.image.resize_with_crop_or_pad(datapoint['image'], 540, 540)  # eliminates unnecessary borders
-    input_mask = tf.image.resize_with_crop_or_pad(datapoint['segmentation_mask'], 540, 540)
-    input_image = tf.image.resize(input_image, (448, 448))
-    input_mask = tf.image.resize(input_mask, (448, 448))
+    # input_image = tf.image.resize_with_crop_or_pad(datapoint['image'], 540, 540)  # eliminates unnecessary borders
+    # input_mask = tf.image.resize_with_crop_or_pad(datapoint['segmentation_mask'], 540, 540)
+    # input_image = tf.image.resize(input_image, (448, 448))
+    # input_mask = tf.image.resize(input_mask, (448, 448))
+
+    input_image = tf.image.resize(datapoint['image'], (448, 448))
+    input_mask = tf.image.resize(datapoint['segmentation_mask'], (448, 448))
 
     input_image, input_mask = normalize(input_image, input_mask)
 
     return input_image, input_mask
 
 
-TRAIN_LENGTH = 3000
+TRAIN_LENGTH = 4000
 BATCH_SIZE = 16
-BUFFER_SIZE = 3000
-STEPS_PER_EPOCH = TRAIN_LENGTH // BATCH_SIZE
+BUFFER_SIZE = 1000
+STEPS_PER_EPOCH = (TRAIN_LENGTH // BATCH_SIZE)  # TODO: investigate memory leak
 
 train = dataset['train'].map(load_image_train, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 test = dataset['test'].map(load_image_test)
@@ -120,7 +127,8 @@ for image, mask in train.take(1):
     sample_image, sample_mask = image, mask
     display([sample_image, sample_mask])
 
-OUTPUT_CHANNELS = 4
+
+OUTPUT_CHANNELS = 17
 
 # TODO: try to change this
 base_model = tf.keras.applications.MobileNetV2(input_shape=[448, 448, 3], include_top=False)
@@ -211,7 +219,9 @@ model_history = model.fit(train_dataset, epochs=EPOCHS,
                           steps_per_epoch=STEPS_PER_EPOCH,
                           validation_steps=VALIDATION_STEPS,
                           validation_data=test_dataset,
-                          callbacks=[DisplayCallback(), checkpoint])
+                          callbacks=[DisplayCallback(), checkpoint]
+                          # callbacks=[checkpoint, garbage_collect]
+                          )
 
 loss = model_history.history['loss']
 val_loss = model_history.history['val_loss']

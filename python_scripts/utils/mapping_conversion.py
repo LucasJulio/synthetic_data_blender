@@ -78,6 +78,7 @@ ARDUINO_COMPONENTS_CLASSES = {
 
 NUMBER_OF_CLASSES = 17
 
+
 def convert_segmentation_to_mapping(img):
     inter = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
     m_img = np.zeros_like(inter).astype(np.uint8)

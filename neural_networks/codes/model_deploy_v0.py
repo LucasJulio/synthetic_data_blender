@@ -17,7 +17,7 @@ if gpus:
 
 
 cap = cv2.VideoCapture(0)
-model = tf.keras.models.load_model("/home/ribeiro-desktop/blender_experiments/neural_networks/models/augmentation_v1-BSF")
+model = tf.keras.models.load_model("/home/ribeiro-desktop/blender_experiments/neural_networks/logs/current_run")
 
 
 def normalize_input(input_image):
@@ -50,7 +50,28 @@ while True:
     # Our operations on the frame come here
     img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     pred_mask = np.asarray(inference_on_image(img_rgb, model))
-    pred_mask = pred_mask.astype(np.uint8)*84
+    pred_mask = pred_mask.astype(np.uint8) * (255//17)
+    """
+    PIXEL_VALUE ---------- CORRESPONDING_CLASS 
+    000---------------------0_Background
+    015---------------------1_Substrate
+    030---------------------2_Header_Female
+    045---------------------3_Header_Male
+    060---------------------4_Main_Microcontroller
+    075---------------------5_USB_Connector
+    090---------------------6_DC_Jack
+    105---------------------7_Button
+    120---------------------8_Voltage_Regulator
+    135---------------------9_SMD_CDR
+    150---------------------10_SMD_LED
+    165---------------------11_SO_Transistor
+    180---------------------12_Crystal_Oscillator
+    195---------------------13_Electrolytic_Capacitor
+    210---------------------14_USB_Controller
+    225---------------------15_IC
+    240---------------------16_Polyfuse
+    """
+
     pred_mask_display = cv2.merge((pred_mask, pred_mask, pred_mask)).astype(np.uint8)
     img_resized = cv2.resize(frame, (448, 448))
     display = np.hstack([img_resized, pred_mask_display])
