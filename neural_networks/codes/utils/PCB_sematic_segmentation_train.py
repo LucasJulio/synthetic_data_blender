@@ -1,19 +1,26 @@
 import os
+import gc
+from datetime import datetime
 import numpy as np
 import tensorflow as tf
+from .models.archs import Custom
+from glob import glob
+import tensorflow_addons as tfa
+# from tensorflow_addons.losses.focal_loss import sigmoid_focal_crossentropy
+from tensorflow_addons.image import gaussian_filter2d
 import matplotlib.pyplot as plt
-import gc
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow_examples.models.pix2pix import pix2pix
 from neural_networks.codes.utils import PCB_dataset
+from focal_loss import SparseCategoricalFocalLoss
 from PIL import Image
-
 
 DATASETS_MAIN_PATH = os.path.expanduser("/datasets/")
 SELECTED_DATASET = "sample_dataset"
+run_log_path = "/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/logs/" + datetime.now().strftime("%m-%d--%H-%M")
 
-
+"""
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
     try:
@@ -25,16 +32,22 @@ if gpus:
     except RuntimeError as e:
         # Memory growth must be set before GPUs have been initialized
         print(e)
+"""
+print("tf.__version__: ", tf.__version__)
 
+# TODO: tensorboard for hyperparameters, metrics and images
 
 dataset_builder = PCB_dataset.PCB()
 dataset_builder.download_and_prepare()
 dataset = dataset_builder.as_dataset()
 
+tf.keras.backend.clear_session()
+gc.collect()
+tf.compat.v1.get_default_graph()._py_funcs_used_in_graph = []
+
 
 def normalize(input_image, input_mask):
     input_image = tf.cast(input_image, tf.float32) / 255.0
-    # input_mask -= 1
     return input_image, input_mask
 
 
@@ -47,16 +60,19 @@ def augment_data(input_img, input_mask):
     HUE channel changes
     """
     # Brightness
-    if tf.random.uniform(()) > 0.2:
-        input_img = tf.image.random_brightness(input_img, 0.4)
+    # tf.random.uniform(()) > 0.5:
+    input_img = tf.image.random_brightness(input_img, 0.2)
 
     # Contrast
-    if tf.random.uniform(()) > 0.2:
-        input_img = tf.image.random_contrast(input_img, 0.8, 1.2)
+    # tf.random.uniform(()) > 0.5:
+    input_img = tf.image.random_contrast(input_img, 0.7, 1.3)
 
     # HUE mess
-    if tf.random.uniform(()) > 0.2:
-        input_img = tf.image.random_hue(input_img, 0.05)
+    # if tf.random.uniform(()) > 0.5:
+    input_img = tf.image.random_hue(input_img, 0.4)
+
+    if tf.random.uniform(()) > 0.5:
+        input_img = gaussian_filter2d(input_img)
 
     augmented_img = input_img
 
@@ -70,8 +86,8 @@ def load_image_train(datapoint):
     # input_image = tf.image.resize(input_image, (448, 448))
     # input_mask = tf.image.resize(input_mask, (448, 448))
 
-    input_image = tf.image.resize(datapoint['image'], (448, 448))
-    input_mask = tf.image.resize(datapoint['segmentation_mask'], (448, 448))
+    input_image = tf.image.resize(datapoint['image'], (512, 512))
+    input_mask = tf.image.resize(datapoint['segmentation_mask'], (512, 512))
 
     if tf.random.uniform(()) > 0.5:
         input_image = tf.image.flip_left_right(input_image)
@@ -88,17 +104,17 @@ def load_image_test(datapoint):
     # input_image = tf.image.resize(input_image, (448, 448))
     # input_mask = tf.image.resize(input_mask, (448, 448))
 
-    input_image = tf.image.resize(datapoint['image'], (448, 448))
-    input_mask = tf.image.resize(datapoint['segmentation_mask'], (448, 448))
+    input_image = tf.image.resize(datapoint['image'], (512, 512))
+    input_mask = tf.image.resize(datapoint['segmentation_mask'], (512, 512))
 
     input_image, input_mask = normalize(input_image, input_mask)
 
     return input_image, input_mask
 
 
-TRAIN_LENGTH = 4000
-BATCH_SIZE = 16
-BUFFER_SIZE = 1000
+TRAIN_LENGTH = 6000
+BATCH_SIZE = 8
+BUFFER_SIZE = 10
 STEPS_PER_EPOCH = (TRAIN_LENGTH // BATCH_SIZE)  # TODO: investigate memory leak
 
 train = dataset['train'].map(load_image_train, num_parallel_calls=tf.data.experimental.AUTOTUNE)
@@ -131,6 +147,7 @@ for image, mask in train.take(1):
 OUTPUT_CHANNELS = 17
 
 # TODO: try to change this
+"""
 base_model = tf.keras.applications.MobileNetV2(input_shape=[448, 448, 3], include_top=False)
 
 # Use the activations of these layers
@@ -156,6 +173,7 @@ up_stack = [
 ]
 
 
+# TODO: try freezing batch normalization layers
 def unet_model(output_channels):
     inputs = tf.keras.layers.Input(shape=[448, 448, 3])
     x_i = inputs
@@ -171,15 +189,20 @@ def unet_model(output_channels):
         concat = tf.keras.layers.Concatenate()
         x_i = concat([x_i, skip])
 
-    # This is the last layer of the model
+    # These are the last layers of the model
     last = tf.keras.layers.Conv2DTranspose(output_channels, 3, strides=2, padding='same')  # 64x64 -> 128x128
     x_i = last(x_i)
     return tf.keras.Model(inputs=inputs, outputs=x_i)
 
 
+# fl = tfa.losses.SigmoidFocalCrossEntropy()
 model = unet_model(OUTPUT_CHANNELS)
+"""
+
+model = Custom(OUTPUT_CHANNELS)
+
 model.compile(optimizer=Adam(learning_rate=0.001, amsgrad=False),
-              loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+              loss=SparseCategoricalFocalLoss(gamma=2, from_logits=True),  #tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
               metrics=['accuracy'])
 
 
@@ -207,30 +230,37 @@ class DisplayCallback(tf.keras.callbacks.Callback):
         print('\nSample Prediction after epoch {}\n'.format(epoch+1))
 
 
-checkpoint = ModelCheckpoint(filepath="/home/ribeiro-desktop/blender_experiments/neural_networks/logs/current_run",
+checkpoint = ModelCheckpoint(filepath=run_log_path,
                              save_best_only=True)
 
-VALIDATION_LENGTH = 1000
-EPOCHS = 40
+
+class GarbageCollect(tf.keras.callbacks.Callback):
+    def on_epoch_begin(self, epoch, logs=None):
+        tf.keras.backend.clear_session()
+        gc.collect()
+        tf.compat.v1.get_default_graph()._py_funcs_used_in_graph = []
+
+
+VALIDATION_LENGTH = 2000
+EPOCHS = 50
 VAL_SUBSPLITS = 10
 VALIDATION_STEPS = VALIDATION_LENGTH//BATCH_SIZE//VAL_SUBSPLITS
 
-model_history = model.fit(train_dataset, epochs=EPOCHS,
-                          steps_per_epoch=STEPS_PER_EPOCH,
-                          validation_steps=VALIDATION_STEPS,
-                          validation_data=test_dataset,
-                          callbacks=[DisplayCallback(), checkpoint]
-                          # callbacks=[checkpoint, garbage_collect]
-                          )
+model.fit(train_dataset, epochs=EPOCHS,
+          steps_per_epoch=STEPS_PER_EPOCH,
+          validation_steps=VALIDATION_STEPS,
+          validation_data=test_dataset,
+          callbacks=[DisplayCallback(), checkpoint, GarbageCollect()]
+          )
 
-loss = model_history.history['loss']
-val_loss = model_history.history['val_loss']
+# loss = model_history.history['loss']
+# val_loss = model_history.history['val_loss']
 
 epochs = range(EPOCHS)
 
 plt.figure()
-plt.plot(epochs, loss, 'r', label='Training loss')
-plt.plot(epochs, val_loss, 'bo', label='Validation loss')
+# plt.plot(epochs, loss, 'r', label='Training loss')
+# plt.plot(epochs, val_loss, 'bo', label='Validation loss')
 plt.title('Training and Validation Loss')
 plt.xlabel('Epoch')
 plt.ylabel('Loss Value')
@@ -239,7 +269,7 @@ plt.legend()
 plt.show()
 
 # Load best model from current run
-best = tf.keras.models.load_model("/home/ribeiro-desktop/blender_experiments/neural_networks/logs/current_run")
+best = tf.keras.models.load_model(run_log_path)
 
 for img, mask in test.take(1):
     test_image, test_mask = img, mask
@@ -267,6 +297,6 @@ def inference_on_image(image_file_path, classifier_model):
     display([np_img, pred_mask])
 
 
-for i in range(1, 31):
-    inference_on_image("/home/ribeiro-desktop/Pictures/Webcam/ri_" + str(i).zfill(7) + ".jpg", best)
-    inference_on_image("/home/ribeiro-desktop/Pictures/Webcam/ri_" + str(i).zfill(7) + ".jpg", model)
+for img_path in glob("/home/ribeiro-desktop/POLI/TCC/blender_experiments/images_for_testing/macro/*"):
+    inference_on_image(img_path, best)
+    inference_on_image(img_path, model)

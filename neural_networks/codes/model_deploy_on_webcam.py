@@ -2,6 +2,8 @@ import tensorflow as tf
 import cv2
 import numpy as np
 from PIL import Image
+import datetime
+
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
@@ -17,7 +19,10 @@ if gpus:
 
 
 cap = cv2.VideoCapture(0)
-model = tf.keras.models.load_model("/home/ribeiro-desktop/blender_experiments/neural_networks/logs/current_run")
+
+# TODO: specify model when running
+model_path = "/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/logs/11-20--18-27"
+model = tf.keras.models.load_model(model_path, compile=False)
 
 
 def normalize_input(input_image):
@@ -50,7 +55,11 @@ while True:
     # Our operations on the frame come here
     img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     pred_mask = np.asarray(inference_on_image(img_rgb, model))
-    pred_mask = pred_mask.astype(np.uint8) * (255//17)
+
+    # Convert to Hue channel for HSV visualization
+    hue_pred_mask = pred_mask.astype(np.uint8) * (180//17)
+    saturation_value = np.ones_like(pred_mask) * 255
+    saturation_value = saturation_value.astype(np.uint8)
     """
     PIXEL_VALUE ---------- CORRESPONDING_CLASS 
     000---------------------0_Background
@@ -72,8 +81,10 @@ while True:
     240---------------------16_Polyfuse
     """
 
-    pred_mask_display = cv2.merge((pred_mask, pred_mask, pred_mask)).astype(np.uint8)
-    img_resized = cv2.resize(frame, (448, 448))
+    pred_mask_display = cv2.merge((hue_pred_mask, saturation_value, saturation_value)).astype(np.uint8)
+    pred_mask_display = cv2.cvtColor(pred_mask_display, cv2.COLOR_HSV2RGB)
+    img_resized = cv2.resize(frame, (896, 896))
+    pred_mask_display = cv2.resize(pred_mask_display, (896, 896))
     display = np.hstack([img_resized, pred_mask_display])
     # Display the resulting frame
     cv2.imshow('frame', display)

@@ -3,8 +3,8 @@ import numpy as np
 from glob import glob
 import os
 
-DATASETS_MAIN_PATH = os.path.expanduser("~/blender_experiments/datasets/")
-SELECTED_DATASET = "Arduino"
+DATASETS_MAIN_PATH = os.path.expanduser("~/POLI/TCC/blender_experiments/datasets/")
+SELECTED_DATASET = "Arduino_2"
 ARDUINO_COMPONENTS_CLASSES = {
     # VMAP_ID    # CLASS_ID     # CLASS_NAME
     0: 0,  # "0_Background"
