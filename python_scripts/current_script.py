@@ -1,5 +1,7 @@
 from bpy import ops, context, data, types
 import numpy as np
+import random
+import re
 import colorsys
 import os
 
@@ -305,10 +307,56 @@ def set_color_pcb():
     data.materials["Pcb_a3ee"].node_tree.nodes["ColorRamp"].color_ramp.elements[1].color = rgb_pcb+(1,)
     data.materials["Pcb_a3ee"].node_tree.nodes["ColorRamp"].color_ramp.elements[0].color = rgb_trilha+(1,)
 
+class Change_text:
+    """
+    Class responsible to assining random text in objects within "Texto" collection and begining with "Text" in their names
+    """
+    def __init__(self):
+        #Pega o estado dos textos antes
+        self.text_before=[]
+        for obj in data.collections['Texto'].all_objects:
+            if 'Text' in obj.name:
+                self.text_before.append(obj.data.body)
+    @staticmethod
+    def create_random_text(N):
+        return ''.join(random.choices(string.ascii_uppercase + string.digits,
+                         k=N))
+    @staticmethod
+    def separate(string):
+        return re.split('([ |\n|-])', string)
+
+    def change_text(self):
+        """
+        Write random text
+        """
+        for obj in data.collections['Texto'].all_objects:
+            if 'Text' in obj.name:
+                str_list=self.separate(obj.data.body)
+                for i,word in enumerate(str_list):
+                    if word not in [' ','\n','-']:
+                        N=len(word)
+                        str_list[i]=self.create_random_text(N)
+
+                # Concatenacao da string randomica
+                random_string=''.join(str_list)
+
+                # Escrevendo string
+                obj.data.body=random_string
+
+    def back_to_original_text(self):
+        """
+        Write the original text
+        """
+        for i,obj in enumerate(data.collections['Texto'].all_objects):
+            if 'Text' in obj.name:
+                obj.data.body=self.text_before.pop(0)
 
 # Set camera
 context.scene.camera = data.objects["Camera"]
 show_objects()
+
+# Create the text randomizer
+random_text=Change_text()
 
 for i in range(2000, 2020):
     img_id = str(i).zfill(7)
@@ -333,7 +381,12 @@ for i in range(2000, 2020):
     rotate_camera(max_angle_pitch=MAX_ANGLE_PITCH_CAMERA, max_angle_yaw=MAX_ANGLE_YAW_CAMERA)
     position_camera(max_delta_x=MAX_DELTA_X_CAMERA, max_delta_y=MAX_DELTA_Y_CAMERA)
     set_plane_material()
+
+    # Assing a color to the PCB, close to the original color in the HSV space
     set_color_pcb()
+
+    # Assing random text to the text objects
+    random_text.change_text()
 
     # Nodes and renders
     nodes = data.scenes[0].node_tree.nodes
@@ -348,3 +401,6 @@ for i in range(2000, 2020):
     data.objects["Luz suporte 2"].hide_render = True
 
     show_objects()
+
+    # Return text back to the original
+    random_text.back_to_original_text()
