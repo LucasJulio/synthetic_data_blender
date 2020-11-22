@@ -1,5 +1,6 @@
 from bpy import ops, context, data, types
 import numpy as np
+import colorsys
 import os
 
 # Commented components are children of other components in this list, and this was causing many issues
@@ -271,6 +272,39 @@ def rotate_plane(max_plane_rotation):
                          use_proportional_connected=False, use_proportional_projected=False)
     obj.select_set(False)
 
+def set_color_pcb():
+    """
+    Set PCB and its path a random color
+    """
+    def srgb_to_linear(r, g, b):
+        def srgb(c):
+            a = .055
+            if c <= .04045:
+                return c / 12.92
+            else:
+                return ((c+a) / (1+a)) ** 2.4
+        return tuple(srgb(c) for c in (r, g, b))
+
+
+    hue_pcb=np.random.uniform(0.540,0.617)
+    sat_pcb=np.random.uniform(0.804,1.000)
+    val_pcb=np.random.uniform(0.266,0.371)
+
+    # Converte valores HSV para RGB
+    rgb_pcb=colorsys.hsv_to_rgb(hue_pcb,sat_pcb,val_pcb)
+
+    # Converte e sRGB para Linear
+    rgb_pcb=srgb_to_linear(rgb_pcb[0],rgb_pcb[1],rgb_pcb[2])
+
+    # Converte valores HSV para RGB
+    rgb_trilha=colorsys.hsv_to_rgb(hue_pcb+0.015,sat_pcb,val_pcb-0.094)
+
+    # Converte e sRGB para Linear
+    rgb_trilha=srgb_to_linear(rgb_trilha[0],rgb_trilha[1],rgb_trilha[2])
+
+    data.materials["Pcb_a3ee"].node_tree.nodes["ColorRamp"].color_ramp.elements[1].color = rgb_pcb+(1,)
+    data.materials["Pcb_a3ee"].node_tree.nodes["ColorRamp"].color_ramp.elements[0].color = rgb_trilha+(1,)
+
 
 # Set camera
 context.scene.camera = data.objects["Camera"]
@@ -299,6 +333,7 @@ for i in range(2000, 2020):
     rotate_camera(max_angle_pitch=MAX_ANGLE_PITCH_CAMERA, max_angle_yaw=MAX_ANGLE_YAW_CAMERA)
     position_camera(max_delta_x=MAX_DELTA_X_CAMERA, max_delta_y=MAX_DELTA_Y_CAMERA)
     set_plane_material()
+    set_color_pcb()
 
     # Nodes and renders
     nodes = data.scenes[0].node_tree.nodes
