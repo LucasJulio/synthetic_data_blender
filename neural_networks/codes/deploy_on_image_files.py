@@ -1,4 +1,5 @@
 import tensorflow as tf
+from tensorflow.keras.models import load_model
 import cv2 as cv
 import numpy as np
 from PIL import Image
@@ -17,10 +18,10 @@ if gpus:
         # Memory growth must be set before GPUs have been initialized
         print(e)
 
-root_img_directory = "/home/ribeiro-desktop/POLI/TCC/blender_experiments/images_for_testing/macro/"
+root_img_directory = "/home/ribeiro-desktop/POLI/TCC/blender_experiments/datasets/evaluation/macro_DSLR/"
 img_files_paths = glob(root_img_directory + "*")
-model = tf.keras.models.load_model("/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/logs/11-20--21-09",
-                                   compile=False)
+model = load_model("/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/logs/11-20--21-09",
+                   compile=False)
 
 
 def normalize_input(input_image):

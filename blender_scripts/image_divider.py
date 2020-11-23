@@ -2,7 +2,7 @@ import cv2 as cv
 from glob import glob
 import os
 
-DATASETS_MAIN_PATH = os.path.expanduser("~/POLI/TCC/blender_experiments/datasets/")
+DATASETS_MAIN_PATH = os.path.expanduser("/datasets/")
 SELECTED_DATASET = "Arduino_2"
 
 # TODO: beware of "_whole" directories!

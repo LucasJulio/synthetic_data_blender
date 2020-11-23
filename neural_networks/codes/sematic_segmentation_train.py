@@ -3,24 +3,23 @@ import gc
 from datetime import datetime
 import numpy as np
 import tensorflow as tf
-from .models.archs import Custom
+from .utils import Custom, load_image_train, load_image_test, augment_data
 from glob import glob
-import tensorflow_addons as tfa
-# from tensorflow_addons.losses.focal_loss import sigmoid_focal_crossentropy
-from tensorflow_addons.image import gaussian_filter2d
 import matplotlib.pyplot as plt
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow_examples.models.pix2pix import pix2pix
-from neural_networks.codes.utils import PCB_dataset
+from .PCB_dataset import PCB
 from focal_loss import SparseCategoricalFocalLoss
 from PIL import Image
+# import tensorflow_addons as tfa
 
 DATASETS_MAIN_PATH = os.path.expanduser("/datasets/")
 SELECTED_DATASET = "sample_dataset"
-run_log_path = "/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/logs/" + datetime.now().strftime("%m-%d--%H-%M")
+RUN_LOG_PATH = "/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/logs/" \
+               + datetime.now().strftime("%m-%d--%H-%M")
 
-"""
+
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
     try:
@@ -32,12 +31,11 @@ if gpus:
     except RuntimeError as e:
         # Memory growth must be set before GPUs have been initialized
         print(e)
-"""
 print("tf.__version__: ", tf.__version__)
 
 # TODO: tensorboard for hyperparameters, metrics and images
 
-dataset_builder = PCB_dataset.PCB()
+dataset_builder = PCB()
 dataset_builder.download_and_prepare()
 dataset = dataset_builder.as_dataset()
 
@@ -46,82 +44,16 @@ gc.collect()
 tf.compat.v1.get_default_graph()._py_funcs_used_in_graph = []
 
 
-def normalize(input_image, input_mask):
-    input_image = tf.cast(input_image, tf.float32) / 255.0
-    return input_image, input_mask
-
-
-@tf.function
-def augment_data(input_img, input_mask):
-    """
-    :param input_img: input tensor to be augmented
-    :param input_mask: just the same mask
-    :return: tensor with the following possible augmentations: brightness changes, contrast changes,
-    HUE channel changes
-    """
-    # Brightness
-    # tf.random.uniform(()) > 0.5:
-    input_img = tf.image.random_brightness(input_img, 0.2)
-
-    # Contrast
-    # tf.random.uniform(()) > 0.5:
-    input_img = tf.image.random_contrast(input_img, 0.7, 1.3)
-
-    # HUE mess
-    # if tf.random.uniform(()) > 0.5:
-    input_img = tf.image.random_hue(input_img, 0.4)
-
-    if tf.random.uniform(()) > 0.5:
-        input_img = gaussian_filter2d(input_img)
-
-    augmented_img = input_img
-
-    return augmented_img, input_mask
-
-
-@tf.function
-def load_image_train(datapoint):
-    # input_image = tf.image.resize_with_crop_or_pad(datapoint['image'], 540, 540)  # eliminates unnecessary borders
-    # input_mask = tf.image.resize_with_crop_or_pad(datapoint['segmentation_mask'], 540, 540)
-    # input_image = tf.image.resize(input_image, (448, 448))
-    # input_mask = tf.image.resize(input_mask, (448, 448))
-
-    input_image = tf.image.resize(datapoint['image'], (512, 512))
-    input_mask = tf.image.resize(datapoint['segmentation_mask'], (512, 512))
-
-    if tf.random.uniform(()) > 0.5:
-        input_image = tf.image.flip_left_right(input_image)
-        input_mask = tf.image.flip_left_right(input_mask)
-
-    input_image, input_mask = normalize(input_image, input_mask)
-
-    return input_image, input_mask
-
-
-def load_image_test(datapoint):
-    # input_image = tf.image.resize_with_crop_or_pad(datapoint['image'], 540, 540)  # eliminates unnecessary borders
-    # input_mask = tf.image.resize_with_crop_or_pad(datapoint['segmentation_mask'], 540, 540)
-    # input_image = tf.image.resize(input_image, (448, 448))
-    # input_mask = tf.image.resize(input_mask, (448, 448))
-
-    input_image = tf.image.resize(datapoint['image'], (512, 512))
-    input_mask = tf.image.resize(datapoint['segmentation_mask'], (512, 512))
-
-    input_image, input_mask = normalize(input_image, input_mask)
-
-    return input_image, input_mask
-
-
 TRAIN_LENGTH = 6000
 BATCH_SIZE = 8
-BUFFER_SIZE = 10
+BUFFER_SIZE = 512
 STEPS_PER_EPOCH = (TRAIN_LENGTH // BATCH_SIZE)  # TODO: investigate memory leak
 
-train = dataset['train'].map(load_image_train, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+train = dataset['train'].map(load_image_train)  # , num_parallel_calls=tf.data.experimental.AUTOTUNE)
 test = dataset['test'].map(load_image_test)
 
 # TODO: confirm that augmentation worked
-train_dataset = train.cache().map(augment_data).shuffle(BUFFER_SIZE).batch(BATCH_SIZE).repeat()
+train_dataset = train.cache().map(augment_data).shuffle(BUFFER_SIZE).repeat().batch(BATCH_SIZE)
 train_dataset = train_dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 test_dataset = test.batch(BATCH_SIZE)
 
@@ -147,7 +79,6 @@ for image, mask in train.take(1):
 OUTPUT_CHANNELS = 17
 
 # TODO: try to change this
-"""
 base_model = tf.keras.applications.MobileNetV2(input_shape=[448, 448, 3], include_top=False)
 
 # Use the activations of these layers
@@ -195,14 +126,14 @@ def unet_model(output_channels):
     return tf.keras.Model(inputs=inputs, outputs=x_i)
 
 
-# fl = tfa.losses.SigmoidFocalCrossEntropy()
 model = unet_model(OUTPUT_CHANNELS)
-"""
 
-model = Custom(OUTPUT_CHANNELS)
+# TODO: try this again
+# model = Custom(OUTPUT_CHANNELS)
 
+              #loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
 model.compile(optimizer=Adam(learning_rate=0.001, amsgrad=False),
-              loss=SparseCategoricalFocalLoss(gamma=2, from_logits=True),  #tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+              loss=SparseCategoricalFocalLoss(gamma=8, from_logits=True),
               metrics=['accuracy'])
 
 
@@ -230,7 +161,7 @@ class DisplayCallback(tf.keras.callbacks.Callback):
         print('\nSample Prediction after epoch {}\n'.format(epoch+1))
 
 
-checkpoint = ModelCheckpoint(filepath=run_log_path,
+checkpoint = ModelCheckpoint(filepath=RUN_LOG_PATH,
                              save_best_only=True)
 
 
@@ -242,16 +173,17 @@ class GarbageCollect(tf.keras.callbacks.Callback):
 
 
 VALIDATION_LENGTH = 2000
-EPOCHS = 50
+EPOCHS = 10  # TODO: fix
 VAL_SUBSPLITS = 10
 VALIDATION_STEPS = VALIDATION_LENGTH//BATCH_SIZE//VAL_SUBSPLITS
 
-model.fit(train_dataset, epochs=EPOCHS,
-          steps_per_epoch=STEPS_PER_EPOCH,
-          validation_steps=VALIDATION_STEPS,
-          validation_data=test_dataset,
-          callbacks=[DisplayCallback(), checkpoint, GarbageCollect()]
-          )
+with tf.device('/device:gpu:0'):
+    model.fit(train_dataset, epochs=EPOCHS,
+              steps_per_epoch=STEPS_PER_EPOCH,
+              validation_steps=VALIDATION_STEPS,
+              validation_data=test_dataset,
+              callbacks=[DisplayCallback(), checkpoint, GarbageCollect()]
+              )
 
 # loss = model_history.history['loss']
 # val_loss = model_history.history['val_loss']
@@ -269,7 +201,7 @@ plt.legend()
 plt.show()
 
 # Load best model from current run
-best = tf.keras.models.load_model(run_log_path)
+best = tf.keras.models.load_model(RUN_LOG_PATH)
 
 for img, mask in test.take(1):
     test_image, test_mask = img, mask

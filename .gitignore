@@ -127,19 +127,5 @@ dmypy.json
 
 *.xml
 
-logs/hparam_tuning/
-
-real_PCB_images/
-
-hp_tunning.py
-
-render_results/
-
-neural_networks/codes/utils/PCB_v1_000/
-
 neural_networks/logs/
-
-neural_networks/codes/utils/models/
-
 datasets/*
-images_for_testing/
