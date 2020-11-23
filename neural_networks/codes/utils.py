@@ -1,4 +1,6 @@
 import tensorflow as tf
+import numpy as np
+from PIL import Image
 from tensorflow_addons.image import gaussian_filter2d
 
 
@@ -158,3 +160,26 @@ def load_image_test(datapoint):
     input_image, input_mask = normalize(input_image, input_mask)
 
     return input_image, input_mask
+
+
+def normalize_input(input_image):
+    input_image = tf.cast(input_image, tf.float32) / 255.0
+    return input_image
+
+
+def create_mask(p_mask):
+    p_mask = tf.argmax(p_mask, axis=-1)
+    p_mask = p_mask[..., tf.newaxis]
+    return p_mask[0]
+
+
+def inference_on_image(image_file_path, classifier_model):
+    target_size = max(classifier_model.layers[0].input_shape)
+    im = Image.open(image_file_path)
+    im = im.resize((target_size[1], target_size[2]), Image.ANTIALIAS)
+    np_img = np.asarray(im)
+
+    img_batch = np.expand_dims(np_img, axis=0)
+    pre_processed_input = normalize_input(img_batch)[:, :, :, :3]
+    pred_mask = create_mask(classifier_model.predict(pre_processed_input))
+    return np_img, pred_mask

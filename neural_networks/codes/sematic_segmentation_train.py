@@ -1,18 +1,14 @@
 import os
 import gc
 from datetime import datetime
-import numpy as np
 import tensorflow as tf
-from .utils import Custom, load_image_train, load_image_test, augment_data
-from glob import glob
+from .utils import Custom, load_image_train, load_image_test, augment_data, create_mask
 import matplotlib.pyplot as plt
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import ModelCheckpoint
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
 from tensorflow_examples.models.pix2pix import pix2pix
 from .PCB_dataset import PCB
 from focal_loss import SparseCategoricalFocalLoss
-from PIL import Image
-# import tensorflow_addons as tfa
 
 DATASETS_MAIN_PATH = os.path.expanduser("/datasets/")
 SELECTED_DATASET = "sample_dataset"
@@ -45,7 +41,7 @@ tf.compat.v1.get_default_graph()._py_funcs_used_in_graph = []
 
 
 TRAIN_LENGTH = 6000
-BATCH_SIZE = 8
+BATCH_SIZE = 16
 BUFFER_SIZE = 512
 STEPS_PER_EPOCH = (TRAIN_LENGTH // BATCH_SIZE)  # TODO: investigate memory leak
 
@@ -53,7 +49,7 @@ train = dataset['train'].map(load_image_train)  # , num_parallel_calls=tf.data.e
 test = dataset['test'].map(load_image_test)
 
 # TODO: confirm that augmentation worked
-train_dataset = train.cache().map(augment_data).shuffle(BUFFER_SIZE).repeat().batch(BATCH_SIZE)
+train_dataset = train.map(augment_data).shuffle(BUFFER_SIZE).repeat().batch(BATCH_SIZE)  # .cache("./tf_data.cache")
 train_dataset = train_dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 test_dataset = test.batch(BATCH_SIZE)
 
@@ -127,20 +123,13 @@ def unet_model(output_channels):
 
 
 model = unet_model(OUTPUT_CHANNELS)
+# model = Custom(OUTPUT_CHANNELS)  # TODO: try this again
 
-# TODO: try this again
-# model = Custom(OUTPUT_CHANNELS)
 
-              #loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+# loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
 model.compile(optimizer=Adam(learning_rate=0.001, amsgrad=False),
               loss=SparseCategoricalFocalLoss(gamma=8, from_logits=True),
               metrics=['accuracy'])
-
-
-def create_mask(p_mask):
-    p_mask = tf.argmax(p_mask, axis=-1)
-    p_mask = p_mask[..., tf.newaxis]
-    return p_mask[0]
 
 
 def show_predictions(ds=None, num=1):
@@ -155,25 +144,19 @@ def show_predictions(ds=None, num=1):
 show_predictions()
 
 
+# TODO: replace this with tensorboard images
 class DisplayCallback(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         show_predictions()
         print('\nSample Prediction after epoch {}\n'.format(epoch+1))
 
 
-checkpoint = ModelCheckpoint(filepath=RUN_LOG_PATH,
-                             save_best_only=True)
+checkpoint = ModelCheckpoint(filepath=RUN_LOG_PATH, save_best_only=True)
 
-
-class GarbageCollect(tf.keras.callbacks.Callback):
-    def on_epoch_begin(self, epoch, logs=None):
-        tf.keras.backend.clear_session()
-        gc.collect()
-        tf.compat.v1.get_default_graph()._py_funcs_used_in_graph = []
-
+early_stopping = EarlyStopping(patience=5)
 
 VALIDATION_LENGTH = 2000
-EPOCHS = 10  # TODO: fix
+EPOCHS = 50
 VAL_SUBSPLITS = 10
 VALIDATION_STEPS = VALIDATION_LENGTH//BATCH_SIZE//VAL_SUBSPLITS
 
@@ -182,23 +165,9 @@ with tf.device('/device:gpu:0'):
               steps_per_epoch=STEPS_PER_EPOCH,
               validation_steps=VALIDATION_STEPS,
               validation_data=test_dataset,
-              callbacks=[DisplayCallback(), checkpoint, GarbageCollect()]
+              callbacks=[DisplayCallback(), checkpoint, early_stopping]
               )
 
-# loss = model_history.history['loss']
-# val_loss = model_history.history['val_loss']
-
-epochs = range(EPOCHS)
-
-plt.figure()
-# plt.plot(epochs, loss, 'r', label='Training loss')
-# plt.plot(epochs, val_loss, 'bo', label='Validation loss')
-plt.title('Training and Validation Loss')
-plt.xlabel('Epoch')
-plt.ylabel('Loss Value')
-plt.ylim([0, 1])
-plt.legend()
-plt.show()
 
 # Load best model from current run
 best = tf.keras.models.load_model(RUN_LOG_PATH)
@@ -207,28 +176,3 @@ for img, mask in test.take(1):
     test_image, test_mask = img, mask
     predicted_mask = create_mask(best.predict(test_image[tf.newaxis, ...]))
     display([test_image, test_mask, predicted_mask])
-
-
-print("Train finished. Making some inferences")
-
-
-def normalize_input(input_image):
-    input_image = tf.cast(input_image, tf.float32) / 255.0
-    return input_image
-
-
-def inference_on_image(image_file_path, classifier_model):
-    target_size = max(classifier_model.layers[0].input_shape)
-    im = Image.open(image_file_path)
-    im = im.resize((target_size[1], target_size[2]), Image.ANTIALIAS)
-    np_img = np.asarray(im)
-
-    img_batch = np.expand_dims(np_img, axis=0)
-    pre_processed_input = normalize_input(img_batch)[:, :, :, :3]
-    pred_mask = create_mask(classifier_model.predict(pre_processed_input))
-    display([np_img, pred_mask])
-
-
-for img_path in glob("/home/ribeiro-desktop/POLI/TCC/blender_experiments/images_for_testing/macro/*"):
-    inference_on_image(img_path, best)
-    inference_on_image(img_path, model)

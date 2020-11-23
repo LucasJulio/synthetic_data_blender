@@ -18,9 +18,9 @@ if gpus:
         # Memory growth must be set before GPUs have been initialized
         print(e)
 
-root_img_directory = "/home/ribeiro-desktop/POLI/TCC/blender_experiments/datasets/evaluation/macro_DSLR/"
+root_img_directory = "/home/ribeiro-desktop/POLI/TCC/blender_experiments/datasets/evaluation/macro_DSLR_best/"
 img_files_paths = glob(root_img_directory + "*")
-model = load_model("/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/logs/11-20--21-09",
+model = load_model("/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/logs/11-23--12-50",
                    compile=False)
 
 

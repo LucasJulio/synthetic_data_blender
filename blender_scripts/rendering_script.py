@@ -1,109 +1,113 @@
-from bpy import ops, context, data, types
-import numpy as np
-import random
-import re
 import colorsys
 import os
+import random
+import re
+import string
+import numpy as np
+from bpy import ops, context, data
 
 # Commented components are children of other components in this list, and this was causing many issues
 # TODO: try to get rid of this list
 COMPONENTS_TO_HIDE = [
-'AMS1117',
-'ATMEL25',
-'Atmel',
-#'node5',
-#'node6.001',
-'Botao',
-'Jumper ICSP',
-#'node7.001',
-'M7',
-'node8',
-'node9',
-'node10',
-'node13',
-'node13.001',
-#'Cylinder.001',
-'node18',
-'node20',
-'node20.002',
-'node20.004',
-'node22',
-'node22.001',
-'node22.002',
-'node22.003',
-'node23',
-'node24',
-'node24.002',
-'node24.004',
-'node24.006',
-'node24.008',
-'node24.010',
-'node24.012',
-'node24.014',
-'node24.016',
-'node27',
-'node30',
-'node31',
-'node34',
-'node37',
-'node37.001',
-'node37.002',
-'node37.003',
-'node42',
-'node44',
-'node45',
-'node47',
-'node47.001',
-'node48',
-'node49',
-'node50',
-'node51',
-'node52',
-'node53',
-'Substrato',
-#'contato',
-#'contato.001',
-#'contato.002',
-#'contato.003',
-#'contato.004',
-#'contato.005',
-#'contato.006',
-#'contato.007',
-#'contato.008',
-#'contato.009',
-#'contato.010',
-#'contato.011',
-#'contato.012',
-#'contato.013',
-#'contato.014',
-#'contato1',
-#'contato2',
-#'contatos',
-#'contatos.001',
-#'contatos.002',
-#'Cylinder',
-#'node17.001',
-#'node19',
-#'node20.001',
-#'node20.003',
-#'node20.005',
-#'node24.001',
-#'node24.003',
-#'node24.005',
-#'node24.007',
-#'node24.009',
-#'node24.011',
-#'node24.013',
-#'node24.015',
-#'node24.017',
-#'node25',
-#'node27.001',
-#'node43.001'
+    'AMS1117',
+    'ATMEL25',
+    'Atmel',
+    # 'node5',
+    # 'node6.001',
+    'Botao',
+    'Jumper ICSP',
+    # 'node7.001',
+    'M7',
+    'node8',
+    'node9',
+    'node10',
+    'node13',
+    'node13.001',
+    # 'Cylinder.001',
+    'node18',
+    'node20',
+    'node20.002',
+    'node20.004',
+    'node22',
+    'node22.001',
+    'node22.002',
+    'node22.003',
+    'node23',
+    'node24',
+    'node24.002',
+    'node24.004',
+    'node24.006',
+    'node24.008',
+    'node24.010',
+    'node24.012',
+    'node24.014',
+    'node24.016',
+    'node27',
+    'node30',
+    'node31',
+    'node34',
+    'node37',
+    'node37.001',
+    'node37.002',
+    'node37.003',
+    'node42',
+    'node44',
+    'node45',
+    'node47',
+    'node47.001',
+    'node48',
+    'node49',
+    'node50',
+    'node51',
+    'node52',
+    'node53',
+    'Substrato',
+    # 'contato',
+    # 'contato.001',
+    # 'contato.002',
+    # 'contato.003',
+    # 'contato.004',
+    # 'contato.005',
+    # 'contato.006',
+    # 'contato.007',
+    # 'contato.008',
+    # 'contato.009',
+    # 'contato.010',
+    # 'contato.011',
+    # 'contato.012',
+    # 'contato.013',
+    # 'contato.014',
+    # 'contato1',
+    # 'contato2',
+    # 'contatos',
+    # 'contatos.001',
+    # 'contatos.002',
+    # 'Cylinder',
+    # 'node17.001',
+    # 'node19',
+    # 'node20.001',
+    # 'node20.003',
+    # 'node20.005',
+    # 'node24.001',
+    # 'node24.003',
+    # 'node24.005',
+    # 'node24.007',
+    # 'node24.009',
+    # 'node24.011',
+    # 'node24.013',
+    # 'node24.015',
+    # 'node24.017',
+    # 'node25',
+    # 'node27.001',
+    # 'node43.001'
 ]
 
 ENVIRONMENT_ROT_DIVISIONS = 60
 PROB_SUPP_LIGHT1_ON = 0.3
 PROB_SUPP_LIGHT2_ON = 0.3
+PROB_SUPP_LIGHT3_ON = 0.3
+PROB_SUPP_LIGHT4_ON = 0.3
+PROB_SUPP_LIGHT5_ON = 0.3
 
 PROB_HIDE_OBJ = 0.1
 PROB_HIDE_TXT = 0.5
@@ -117,7 +121,7 @@ MAX_PLANE_ROTATION = 360
 
 # root_folder = 'A:\\Documentos\\GitHub\\synthetic_data_blender\\'
 root_folder = '/home/ribeiro-desktop/POLI/TCC/blender_experiments'
-blend_file = os.path.join(root_folder, 'Kicad files', 'Arduino_Uno', 'arduino_uno.blend')
+blend_file = os.path.join(root_folder, 'Kicad files', 'Arduino_Uno', 'arduino_uno_dos.blend')
 hdri_folder = os.path.join(root_folder, 'HDRI')
 ops.wm.open_mainfile(filepath=blend_file)
 
@@ -143,7 +147,8 @@ def set_render_exposure(exp):
     context.scene.cycles.film_exposure = exp
 
 
-def set_evironment_lights(rot_z=False, hdri_filename=None, turn_on_supp1=None, turn_on_supp2=None):
+def set_evironment_lights(rot_z=False, hdri_filename=None, turn_on_supp1=True, turn_on_supp2=True, turn_on_supp3=True,
+                          turn_on_supp4=True, turn_on_supp5=True):
     """
     Set random environment lights via HDRI image, it's rotation and 2 support lights for more reflexity artifacts
     """
@@ -175,17 +180,36 @@ def set_evironment_lights(rot_z=False, hdri_filename=None, turn_on_supp1=None, t
     # Set enviroment rotation
     data.worlds["World"].node_tree.nodes["Mapping"].inputs[2].default_value[2] = rot_z
 
-    # Set support lights
-    # Probability to turn on
+    data.objects["Luz suporte 1"].hide_render = True
+    data.objects["Luz suporte 2"].hide_render = True
+    data.objects["Luz suporte 3"].hide_render = True
+    data.objects["Luz suporte 4"].hide_render = True
+    data.objects["Luz suporte 5"].hide_render = True
 
-    if turn_on_supp1 is None:
-        turn_on_supp1 = decision(PROB_SUPP_LIGHT1_ON)
-    if turn_on_supp2 is None:
-        turn_on_supp2 = decision(PROB_SUPP_LIGHT2_ON)
+    if turn_on_supp1 and decision(PROB_SUPP_LIGHT1_ON):
+        energy = np.random.randint(4, 12)
+        data.objects["Luz suporte 1"].hide_render = False
+        data.objects["Luz suporte 1"].data.energy = energy
 
-    # Inverse of turn_on_supp because of hide instead of unhide
-    data.objects["Luz suporte 1"].hide_render = np.logical_not(turn_on_supp1)
-    data.objects["Luz suporte 2"].hide_render = np.logical_not(turn_on_supp2)
+    if turn_on_supp2 and decision(PROB_SUPP_LIGHT2_ON):
+        energy = np.random.randint(4, 12)
+        data.objects["Luz suporte 2"].hide_render = False
+        data.objects["Luz suporte 2"].data.energy = energy
+
+    if turn_on_supp3 and decision(PROB_SUPP_LIGHT3_ON):
+        energy = np.random.randint(4, 12)
+        data.objects["Luz suporte 3"].hide_render = False
+        data.objects["Luz suporte 3"].data.energy = energy
+
+    if turn_on_supp4 and decision(PROB_SUPP_LIGHT4_ON):
+        energy = np.random.randint(4, 12)
+        data.objects["Luz suporte 4"].hide_render = False
+        data.objects["Luz suporte 4"].data.energy = energy
+
+    if turn_on_supp5 and decision(PROB_SUPP_LIGHT5_ON):
+        energy = np.random.randint(4, 12)
+        data.objects["Luz suporte 5"].hide_render = False
+        data.objects["Luz suporte 5"].data.energy = energy
 
 
 def hide_objects(probability_to_hide=PROB_HIDE_OBJ):
@@ -274,56 +298,61 @@ def rotate_plane(max_plane_rotation):
                          use_proportional_connected=False, use_proportional_projected=False)
     obj.select_set(False)
 
+
 def set_color_pcb():
     """
     Set PCB and its path a random color
     """
+
     def srgb_to_linear(r, g, b):
         def srgb(c):
             a = .055
             if c <= .04045:
                 return c / 12.92
             else:
-                return ((c+a) / (1+a)) ** 2.4
+                return ((c + a) / (1 + a)) ** 2.4
+
         return tuple(srgb(c) for c in (r, g, b))
 
-
-    hue_pcb=np.random.uniform(0.540,0.617)
-    sat_pcb=np.random.uniform(0.804,1.000)
-    val_pcb=np.random.uniform(0.266,0.371)
-
-    # Converte valores HSV para RGB
-    rgb_pcb=colorsys.hsv_to_rgb(hue_pcb,sat_pcb,val_pcb)
-
-    # Converte e sRGB para Linear
-    rgb_pcb=srgb_to_linear(rgb_pcb[0],rgb_pcb[1],rgb_pcb[2])
+    hue_pcb = np.random.uniform(0.540, 0.617)
+    sat_pcb = np.random.uniform(0.804, 1.000)
+    val_pcb = np.random.uniform(0.266, 0.371)
 
     # Converte valores HSV para RGB
-    rgb_trilha=colorsys.hsv_to_rgb(hue_pcb+0.015,sat_pcb,val_pcb-0.094)
+    rgb_pcb = colorsys.hsv_to_rgb(hue_pcb, sat_pcb, val_pcb)
 
     # Converte e sRGB para Linear
-    rgb_trilha=srgb_to_linear(rgb_trilha[0],rgb_trilha[1],rgb_trilha[2])
+    rgb_pcb = srgb_to_linear(rgb_pcb[0], rgb_pcb[1], rgb_pcb[2])
 
-    data.materials["Pcb_a3ee"].node_tree.nodes["ColorRamp"].color_ramp.elements[1].color = rgb_pcb+(1,)
-    data.materials["Pcb_a3ee"].node_tree.nodes["ColorRamp"].color_ramp.elements[0].color = rgb_trilha+(1,)
+    # Converte valores HSV para RGB
+    rgb_trilha = colorsys.hsv_to_rgb(hue_pcb + 0.015, sat_pcb, val_pcb - 0.094)
 
-class Change_text:
+    # Converte e sRGB para Linear
+    rgb_trilha = srgb_to_linear(rgb_trilha[0], rgb_trilha[1], rgb_trilha[2])
+
+    data.materials["Pcb_a3ee"].node_tree.nodes["ColorRamp"].color_ramp.elements[1].color = rgb_pcb + (1,)
+    data.materials["Pcb_a3ee"].node_tree.nodes["ColorRamp"].color_ramp.elements[0].color = rgb_trilha + (1,)
+
+
+class ChangeText:
     """
     Class responsible to assining random text in objects within "Texto" collection and begining with "Text" in their names
     """
+
     def __init__(self):
-        #Pega o estado dos textos antes
-        self.text_before=[]
+        # Pega o estado dos textos antes
+        self.text_before = []
         for obj in data.collections['Texto'].all_objects:
             if 'Text' in obj.name:
                 self.text_before.append(obj.data.body)
+
     @staticmethod
     def create_random_text(N):
-        return ''.join(random.choices(string.ascii_uppercase + string.digits,
-                         k=N))
+        return ''.join(random.choices(string.ascii_uppercase + string.digits, k=N))
+
     @staticmethod
-    def separate(string):
-        return re.split('([ |\n|-])', string)
+    def separate(s):
+        return re.split('([ |\n|-])', s)
 
     def change_text(self):
         """
@@ -331,40 +360,41 @@ class Change_text:
         """
         for obj in data.collections['Texto'].all_objects:
             if 'Text' in obj.name:
-                str_list=self.separate(obj.data.body)
-                for i,word in enumerate(str_list):
-                    if word not in [' ','\n','-']:
-                        N=len(word)
-                        str_list[i]=self.create_random_text(N)
+                str_list = self.separate(obj.data.body)
+                for i, word in enumerate(str_list):
+                    if word not in [' ', '\n', '-']:
+                        N = len(word)
+                        str_list[i] = self.create_random_text(N)
 
                 # Concatenacao da string randomica
-                random_string=''.join(str_list)
+                random_string = ''.join(str_list)
 
                 # Escrevendo string
-                obj.data.body=random_string
+                obj.data.body = random_string
 
     def back_to_original_text(self):
         """
         Write the original text
         """
-        for i,obj in enumerate(data.collections['Texto'].all_objects):
+        for i, obj in enumerate(data.collections['Texto'].all_objects):
             if 'Text' in obj.name:
-                obj.data.body=self.text_before.pop(0)
+                obj.data.body = self.text_before.pop(0)
+
 
 # Set camera
 context.scene.camera = data.objects["Camera"]
 show_objects()
 
 # Create the text randomizer
-random_text=Change_text()
+# random_text = ChangeText()  # TODO: Not working; Use when fixed
 
-for i in range(2000, 2020):
+for i in range(440, 2000):
     img_id = str(i).zfill(7)
 
     r = np.random.random(6)
     r = r - 0.5
 
-    set_evironment_lights(False)
+    set_evironment_lights(rot_z=False)
 
     if decision(0.5):
         hide_objects(probability_to_hide=PROB_HIDE_OBJ)
@@ -372,21 +402,21 @@ for i in range(2000, 2020):
     if decision(0.5):
         hide_text(probability_to_hide=PROB_HIDE_TXT)
 
-    focal_length = np.random.randint(70, 75)
+    focal_length = np.random.randint(30, 40)
     set_camera_focal_length(focal_length)
 
-    exposure = np.random.random() * 4.0 + 0.6
+    exposure = np.random.random() * 2.0 + 0.8
     set_render_exposure(exposure)
     rotate_plane(max_plane_rotation=MAX_PLANE_ROTATION)
-    rotate_camera(max_angle_pitch=MAX_ANGLE_PITCH_CAMERA, max_angle_yaw=MAX_ANGLE_YAW_CAMERA)
-    position_camera(max_delta_x=MAX_DELTA_X_CAMERA, max_delta_y=MAX_DELTA_Y_CAMERA)
+    # rotate_camera(max_angle_pitch=MAX_ANGLE_PITCH_CAMERA, max_angle_yaw=MAX_ANGLE_YAW_CAMERA)
+    # position_camera(max_delta_x=MAX_DELTA_X_CAMERA, max_delta_y=MAX_DELTA_Y_CAMERA)
     set_plane_material()
 
     # Assing a color to the PCB, close to the original color in the HSV space
     set_color_pcb()
 
     # Assing random text to the text objects
-    random_text.change_text()
+    # random_text.change_text()  # TODO: Use when fixed
 
     # Nodes and renders
     nodes = data.scenes[0].node_tree.nodes
@@ -396,11 +426,7 @@ for i in range(2000, 2020):
     file_output_node.file_slots[0].path = "i_" + img_id + '#'  # Inputs
     ops.render.render(write_still=True, use_viewport=True)
 
-    # Hide support lights
-    data.objects["Luz suporte 1"].hide_render = True
-    data.objects["Luz suporte 2"].hide_render = True
-
     show_objects()
 
     # Return text back to the original
-    random_text.back_to_original_text()
+    # random_text.back_to_original_text()  # TODO: Use when fixed

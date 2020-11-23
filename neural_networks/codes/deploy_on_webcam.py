@@ -20,7 +20,7 @@ if gpus:
 cap = cv2.VideoCapture(0)
 
 # TODO: specify model when running
-model_path = "/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/logs/11-20--18-27"
+model_path = "/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/logs/11-23--12-50"
 model = tf.keras.models.load_model(model_path, compile=False)
 
 
