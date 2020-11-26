@@ -388,8 +388,8 @@ show_objects()
 # Create the text randomizer
 # random_text = ChangeText()  # TODO: Not working; Use when fixed
 
-for i in range(440, 2000):
-    img_id = str(i).zfill(7)
+for i in range(0, 4000):
+    img_id = "3_" + str(i).zfill(5)
 
     r = np.random.random(6)
     r = r - 0.5

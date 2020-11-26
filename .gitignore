@@ -129,3 +129,7 @@ dmypy.json
 
 neural_networks/logs/
 datasets/*
+
+neural_networks/codes/logs/*
+
+neural_networks/codes/Models/Trained/*

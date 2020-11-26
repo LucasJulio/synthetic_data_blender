@@ -1,178 +1,209 @@
 import os
 import gc
-from datetime import datetime
 import tensorflow as tf
-from .utils import Custom, load_image_train, load_image_test, augment_data, create_mask
-import matplotlib.pyplot as plt
+from .utils import configure_gpus
+configure_gpus()
+
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
-from tensorflow_examples.models.pix2pix import pix2pix
-from .PCB_dataset import PCB
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, TensorBoard
 from focal_loss import SparseCategoricalFocalLoss
+from datetime import datetime
+from argparse import ArgumentParser
+from .PCB_dataset import PCB
+from .utils import load_image_train, load_image_not_train, create_augmentation_function,\
+    normalize_input, create_mask, custom_model, create_unet_model
+from .hyperparameters_and_metrics import FREEZE_FACTOR, LEARNING_RATE, LOSS_FUNCTION, BRIGHTNESS_RANGE,\
+    CONTRAST_MIN_RANGE, CONTRAST_MAX_RANGE, HUE_RANGE, GAUSSIAN_BLUR_PROBS, ACCURACY, PRECISION, RECALL
+from tensorboard.plugins.hparams import api as hp
 
-DATASETS_MAIN_PATH = os.path.expanduser("/datasets/")
-SELECTED_DATASET = "sample_dataset"
-RUN_LOG_PATH = "/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/logs/" \
-               + datetime.now().strftime("%m-%d--%H-%M")
 
+BUFFER_SIZE = 128
+OUTPUT_CHANNELS = 17
+MODEL_OUTPUT_PATH = 'Models/Trained/'
 
-gpus = tf.config.experimental.list_physical_devices('GPU')
-if gpus:
-    try:
-        # Currently, memory growth needs to be the same across GPUs
-        for gpu in gpus:
-            tf.config.experimental.set_memory_growth(gpu, True)
-        logical_gpus = tf.config.experimental.list_logical_devices('GPU')
-        print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
-    except RuntimeError as e:
-        # Memory growth must be set before GPUs have been initialized
-        print(e)
-print("tf.__version__: ", tf.__version__)
 
 # TODO: tensorboard for hyperparameters, metrics and images
+def train_and_evaluate(idx, epochs, batch_size, train_length, validation_length, should_evaluate_model, logdir):
+    # Preventing RAM issues
+    tf.keras.backend.clear_session()
+    gc.collect()
+    tf.compat.v1.get_default_graph()._py_funcs_used_in_graph = []
 
-dataset_builder = PCB()
-dataset_builder.download_and_prepare()
-dataset = dataset_builder.as_dataset()
+    # Write hyperparameters and metrics to tensorboard
+    with tf.summary.create_file_writer(logdir + '/hparam_tuning').as_default():
+        hp.hparams_config(
+            hparams=[
+                FREEZE_FACTOR,
+                LEARNING_RATE,
+                BRIGHTNESS_RANGE,
+                CONTRAST_MIN_RANGE,
+                CONTRAST_MAX_RANGE,
+                HUE_RANGE,
+                GAUSSIAN_BLUR_PROBS,
+                LOSS_FUNCTION,
+            ],
+            metrics=[
+                hp.Metric(ACCURACY.name, display_name='Acurácia')
+            ],
+        )
 
-tf.keras.backend.clear_session()
-gc.collect()
-tf.compat.v1.get_default_graph()._py_funcs_used_in_graph = []
+    # Prepare data
+    dataset_builder = PCB()
+    dataset_builder.download_and_prepare()
+    dataset = dataset_builder.as_dataset()
+    train_data = dataset['train'].map(load_image_train, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
+    # We're aware that this is actually validation data, as propper test data uses real images in our application
+    validation_data = dataset['test'].map(load_image_not_train)
 
-TRAIN_LENGTH = 6000
-BATCH_SIZE = 16
-BUFFER_SIZE = 512
-STEPS_PER_EPOCH = (TRAIN_LENGTH // BATCH_SIZE)  # TODO: investigate memory leak
+    # TODO: maybe use .cache("./tf_data.cache")
+    data_augmentation_function = create_augmentation_function(hparams[BRIGHTNESS_RANGE],
+                                                              hparams[CONTRAST_MIN_RANGE],
+                                                              hparams[CONTRAST_MAX_RANGE],
+                                                              hparams[HUE_RANGE],
+                                                              hparams[GAUSSIAN_BLUR_PROBS],
+                                                              )
+    train_dataset = train_data.map(data_augmentation_function).shuffle(BUFFER_SIZE).repeat().batch(batch_size)
+    train_dataset = train_dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+    validation_dataset = validation_data.batch(batch_size)
 
-train = dataset['train'].map(load_image_train)  # , num_parallel_calls=tf.data.experimental.AUTOTUNE)
-test = dataset['test'].map(load_image_test)
+    # TODO: try different feature extractors
+    # Define model to be used
+    model = create_unet_model(OUTPUT_CHANNELS, hparams[FREEZE_FACTOR])
 
-# TODO: confirm that augmentation worked
-train_dataset = train.map(augment_data).shuffle(BUFFER_SIZE).repeat().batch(BATCH_SIZE)  # .cache("./tf_data.cache")
-train_dataset = train_dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-test_dataset = test.batch(BATCH_SIZE)
+    if hparams[LOSS_FUNCTION] == 'sparse_categorical_focal_loss':
+        loss_function = SparseCategoricalFocalLoss(gamma=8, from_logits=True, name="Perda_focal")
+    elif hparams[LOSS_FUNCTION] == 'sparse_categorical_crossentropy':
+        loss_function = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, name="Entropia_cruzada"),
 
+    model.compile(optimizer=Adam(learning_rate=hparams[LEARNING_RATE]),
+                  loss=loss_function,
+                  metrics=[ACCURACY],  # , PRECISION, RECALL],  # TODO: solve 'ValueError: Shapes (None, 448, 448, 17) and (None, 448, 448, 1) are incompatible'
+                  )
 
-def display(display_list):
-    plt.figure(figsize=(15, 15))
+    # Callbacks
+    current_model_output_path = MODEL_OUTPUT_PATH + str(idx) + '_train/' + datetime.now().strftime("%Y%m%d-%H%M%S")
+    os.makedirs(current_model_output_path, exist_ok=True)
+    checkpoint = ModelCheckpoint(filepath=current_model_output_path, save_best_only=True, save_weights_only=True)
+    early_stopping = EarlyStopping(patience=5)
+    reducelronplateau = ReduceLROnPlateau(patience=3, cooldown=4)
+    tensorboard = TensorBoard(log_dir=logdir, histogram_freq=1, profile_batch=0)
 
-    title = ['Input Image', 'True Mask', 'Predicted Mask']
+    # Show some training images samples in Tensorboard
+    img_file_writer = tf.summary.create_file_writer(logdir + str("/images"))
+    train_data_sample = train_data.batch(batch_size)
 
-    for i in range(len(display_list)):
-        plt.subplot(1, len(display_list), i+1)
-        plt.title(title[i])
-        plt.imshow(tf.keras.preprocessing.image.array_to_img(display_list[i]))
-        plt.axis('off')
-    plt.show()
+    with img_file_writer.as_default():
+        for im, msk in train_data_sample.take(4):
+            tf.summary.image("Entradas de treino", im, max_outputs=4, step=0,
+                             description="Dados de entrada utilizados para treinamento, sujeitos a augmentation")
+            # TODO: tf.image.rgb_to_hsv(tf.image.grayscale_to_rgb(msk))
+            tf.summary.image("Máscaras de treino", msk / 16, max_outputs=4, step=0,
+                             description="Dados de rotulação utilizados para treinamento, sujeitos a augmentation")
 
+    #TODO: imgfix
+    # Show some validation images samples in Tensorboard
+    # validation_data_batch = validation_data.batch(batch_size)
+    # val_image_sample = validation_data_batch[0] / 255
+    # with img_file_writer.as_default():
+    #     tf.summary.image("Exemplos de validação", val_image_sample, max_outputs=16, step=0,
+    #                      description="Dados utilizados para validação, não sujeitos a augmentation"))
 
-for image, mask in train.take(1):
-    sample_image, sample_mask = image, mask
-    display([sample_image, sample_mask])
-
-
-OUTPUT_CHANNELS = 17
-
-# TODO: try to change this
-base_model = tf.keras.applications.MobileNetV2(input_shape=[448, 448, 3], include_top=False)
-
-# Use the activations of these layers
-layer_names = [
-    'block_1_expand_relu',
-    'block_3_expand_relu',
-    'block_6_expand_relu',
-    'block_13_expand_relu',
-    'block_16_project',
-]
-layers = [base_model.get_layer(name).output for name in layer_names]
-
-# Create the feature extraction model
-down_stack = tf.keras.Model(inputs=base_model.input, outputs=layers)
-
-down_stack.trainable = False
-
-up_stack = [
-    pix2pix.upsample(512, 3),  # 4x4 -> 8x8
-    pix2pix.upsample(256, 3),  # 8x8 -> 16x16
-    pix2pix.upsample(128, 3),  # 16x16 -> 32x32
-    pix2pix.upsample(64, 3),   # 32x32 -> 64x64
-]
-
-
-# TODO: try freezing batch normalization layers
-def unet_model(output_channels):
-    inputs = tf.keras.layers.Input(shape=[448, 448, 3])
-    x_i = inputs
-
-    # Downsampling through the model
-    skips = down_stack(x_i)
-    x_i = skips[-1]
-    skips = reversed(skips[:-1])
-
-    # Upsampling and establishing the skip connections
-    for up, skip in zip(up_stack, skips):
-        x_i = up(x_i)
-        concat = tf.keras.layers.Concatenate()
-        x_i = concat([x_i, skip])
-
-    # These are the last layers of the model
-    last = tf.keras.layers.Conv2DTranspose(output_channels, 3, strides=2, padding='same')  # 64x64 -> 128x128
-    x_i = last(x_i)
-    return tf.keras.Model(inputs=inputs, outputs=x_i)
-
-
-model = unet_model(OUTPUT_CHANNELS)
-# model = Custom(OUTPUT_CHANNELS)  # TODO: try this again
-
-
-# loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-model.compile(optimizer=Adam(learning_rate=0.001, amsgrad=False),
-              loss=SparseCategoricalFocalLoss(gamma=8, from_logits=True),
-              metrics=['accuracy'])
-
-
-def show_predictions(ds=None, num=1):
-    if ds:
-        for im, msk in ds.take(num):
-            pred_mask = model.predict(im[tf.newaxis, ...])
-            display([im[0], msk[0], create_mask(pred_mask)])
-    else:
-        display([sample_image, sample_mask, create_mask(model.predict(sample_image[tf.newaxis, ...]))])
-
-
-show_predictions()
-
-
-# TODO: replace this with tensorboard images
-class DisplayCallback(tf.keras.callbacks.Callback):
-    def on_epoch_end(self, epoch, logs=None):
-        show_predictions()
-        print('\nSample Prediction after epoch {}\n'.format(epoch+1))
-
-
-checkpoint = ModelCheckpoint(filepath=RUN_LOG_PATH, save_best_only=True)
-
-early_stopping = EarlyStopping(patience=5)
-
-VALIDATION_LENGTH = 2000
-EPOCHS = 50
-VAL_SUBSPLITS = 10
-VALIDATION_STEPS = VALIDATION_LENGTH//BATCH_SIZE//VAL_SUBSPLITS
-
-with tf.device('/device:gpu:0'):
-    model.fit(train_dataset, epochs=EPOCHS,
-              steps_per_epoch=STEPS_PER_EPOCH,
-              validation_steps=VALIDATION_STEPS,
-              validation_data=test_dataset,
-              callbacks=[DisplayCallback(), checkpoint, early_stopping]
+    val_steps = validation_length//batch_size
+    steps_per_epoch = (train_length // batch_size)
+    model.fit(train_dataset,
+              epochs=epochs,
+              steps_per_epoch=steps_per_epoch,
+              validation_data=validation_dataset,
+              validation_steps=val_steps,
+              callbacks=[  # DisplayCallback(),
+                         checkpoint,
+                         early_stopping,
+                         reducelronplateau,
+                         tensorboard,
+                         ]
               )
 
+    # Load best model weights configuration, according to validation data score
+    model.load_weights(current_model_output_path)
 
-# Load best model from current run
-best = tf.keras.models.load_model(RUN_LOG_PATH)
+    if should_evaluate_model:  # TODO: make evaluations over REAL (not synthetic), labeled data
+        """
+        ev_loss, ev_accuracy, ev_precision, ev_recall = model.evaluate(test_data, steps=(test_length // batch_size))
 
-for img, mask in test.take(1):
-    test_image, test_mask = img, mask
-    predicted_mask = create_mask(best.predict(test_image[tf.newaxis, ...]))
-    display([test_image, test_mask, predicted_mask])
+        # Send data to 'HParams' and 'Scalar' dashboards in Tensorboard
+        hp_file_writer = tf.summary.create_file_writer(logdir + str("/test"))
+        with hp_file_writer.as_default():
+            tf.summary.scalar("Teste_" + ACCURACY, ev_accuracy, step=1)
+            tf.summary.scalar("Teste_" + PRECISION, ev_precision, step=1)
+            tf.summary.scalar("Teste_" + RECALL, ev_recall, step=1)
+        """
+        pass
+
+    # TODO: this
+    # Show some corresponding true label samples in Tensorboard
+
+    #TODO: imgfix
+    # Show some predictions in Tensorboard
+    # pre_processed_input = normalize_input(validation_data_batch)[:, :, :, :3]
+    # pred_masks = create_mask(model.predict(pre_processed_input))
+    # with img_file_writer.as_default():
+    #     tf.summary.image("Exemplos de dados de validação", pred_masks, max_outputs=16, step=0)
+
+    _, validation_accuracy = model.evaluate(validation_dataset)
+
+    with tf.summary.create_file_writer(logdir + '/hparam_tuning').as_default():
+        hp.hparams(hparams)  # record the values used in this trial
+        tf.summary.scalar(ACCURACY.name, validation_accuracy, step=1)
+
+    # Saves best model
+    model.save(current_model_output_path.replace("_train", "_best") + "_%.4f_" % validation_accuracy)
+
+
+if __name__ == '__main__':
+    ap = ArgumentParser()
+    ap.add_argument('-ev', '--evaluate', action='store_false', default=True,
+                    help='Evaluate model using test data? Default: True')
+    ap.add_argument('-i', '--idx', type=int, default=0,
+                    help='Index. Use this index to train different models')
+    ap.add_argument('-e', '--epochs', type=int, default=50,
+                    help='Number of epochs. Default: 50')
+    ap.add_argument('-b', '--batch_size', type=int, default=16,
+                    help='Batch size. Default: 16')
+    ap.add_argument('-tl', '--train_length', type=int, default=3000,
+                    help='Number of training examples (NOT INCLUDING VALIDATION SAMPLES).'
+                         ' Should match dataset used in \"anotations\\list.txt\"')
+    ap.add_argument('-vl', '--validation_length', type=int, default=1000,
+                    help='Number of validation examples. Should match dataset used in \"anotations\\list.txt\"')
+    args = ap.parse_args()
+
+    for _ in range(50):
+        # Get a random hyperparameter configuration
+        lr = LEARNING_RATE.domain.sample_uniform()
+        fp = FREEZE_FACTOR.domain.sample_uniform()
+        lf = LOSS_FUNCTION.domain.sample_uniform()
+        br = BRIGHTNESS_RANGE.domain.sample_uniform()
+        cmir = CONTRAST_MIN_RANGE.domain.sample_uniform()
+        cmar = CONTRAST_MAX_RANGE.domain.sample_uniform()
+        hr = HUE_RANGE.domain.sample_uniform()
+        gbp = GAUSSIAN_BLUR_PROBS.domain.sample_uniform()
+
+        hparams = {
+            LEARNING_RATE: lr,
+            FREEZE_FACTOR: fp,
+            LOSS_FUNCTION: lf,
+            BRIGHTNESS_RANGE: br,
+            CONTRAST_MIN_RANGE: cmir,
+            CONTRAST_MAX_RANGE: cmar,
+            HUE_RANGE: hr,
+            GAUSSIAN_BLUR_PROBS: gbp,
+        }
+
+        log_directory = "logs/" + str(args.idx) + "/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+        train_and_evaluate(args.idx,
+                           args.epochs,
+                           args.batch_size,
+                           args.train_length,
+                           args.validation_length,
+                           args.evaluate,
+                           logdir=log_directory)
