@@ -1,4 +1,7 @@
 import tensorflow as tf
+from tensorflow.keras import Model
+from tensorflow.keras.layers import GaussianNoise, Input, Conv2DTranspose, Concatenate, Add
+from tensorflow.keras.applications import MobileNetV2
 from tensorflow_examples.models.pix2pix import pix2pix
 import numpy as np
 from PIL import Image
@@ -38,9 +41,9 @@ def downsample(filters, size, apply_batchnorm=True):
     return result
 
 
-def create_unet_model(output_channels, freeze_percentage, base_model_name="MobileNetV2"):
+def create_unet_model(output_channels, freeze_percentage, noise_stdev, base_model_name="MobileNetV2"):
     if base_model_name == "MobileNetV2":
-        base_model = tf.keras.applications.MobileNetV2(input_shape=[448, 448, 3], include_top=False)
+        base_model = MobileNetV2(input_shape=[448, 448, 3], include_top=False)
 
     # Use the activations of these layers
     layer_names = [
@@ -63,14 +66,15 @@ def create_unet_model(output_channels, freeze_percentage, base_model_name="Mobil
         else:
             layer.trainable = True
     up_stack = [
-        pix2pix.upsample(512, 3),  # 4x4 -> 8x8
+        pix2pix.upsample(512, 3, apply_dropout=True),  # 4x4 -> 8x8
         pix2pix.upsample(256, 3),  # 8x8 -> 16x16
         pix2pix.upsample(128, 3),  # 16x16 -> 32x32
         pix2pix.upsample(64, 3),  # 32x32 -> 64x64
     ]
 
-    inputs = tf.keras.layers.Input(shape=[448, 448, 3])
-    x_i = inputs
+    inputs = Input(shape=[448, 448, 3])
+    x = GaussianNoise(stddev=noise_stdev)(inputs)  # TODO: this should be a hyperparameter
+    x_i = x
 
     # Downsampling through the model
     skips = down_stack(x_i)
@@ -80,20 +84,20 @@ def create_unet_model(output_channels, freeze_percentage, base_model_name="Mobil
     # Upsampling and establishing the skip connections
     for up, skip in zip(up_stack, skips):
         x_i = up(x_i)
-        concat = tf.keras.layers.Concatenate()
+        concat = Concatenate()
         x_i = concat([x_i, skip])
 
     # These are the last layers of the model
-    last = tf.keras.layers.Conv2DTranspose(output_channels, 3, strides=2, padding='same')  # 64x64 -> 128x128
+    last = Conv2DTranspose(output_channels, 3, strides=2, padding='same')  # 64x64 -> 128x128
     x_i = last(x_i)
-    return tf.keras.Model(inputs=inputs, outputs=x_i)
+    return Model(inputs=inputs, outputs=x_i)
 
 
 def custom_model(output_channels):
-    inputs = tf.keras.layers.Input(shape=[448, 448, 3])
+    inputs = Input(shape=[448, 448, 3])
 
     down_stack = [
-        downsample(32, 4, apply_batchnorm=False),  # (bs, 256, 256, 64)
+        downsample(32, 4, apply_batchnorm=True),  # (bs, 256, 256, 64)
         downsample(32, 4),  # (bs, 128, 128, 64)
         downsample(64, 4),  # (bs, 64, 64, 128)
         downsample(128, 4),  # (bs, 32, 32, 256)
@@ -116,7 +120,7 @@ def custom_model(output_channels):
     ]
 
     initializer = tf.random_normal_initializer(0., 0.02)
-    last = tf.keras.layers.Conv2DTranspose(output_channels, 4, strides=2, padding='same', kernel_initializer=initializer
+    last = Conv2DTranspose(output_channels, 4, strides=2, padding='same', kernel_initializer=initializer
                                            , activation='tanh')  # (bs, 256, 256, 3)
 
     x = inputs
@@ -132,11 +136,11 @@ def custom_model(output_channels):
     # Upsampling and establishing the skip connections
     for up, skip in zip(up_stack, skips):
         x = up(x)
-        x = tf.keras.layers.Concatenate()([x, skip])
+        x = Concatenate()([x, skip])
 
     x = last(x)
 
-    return tf.keras.Model(inputs=inputs, outputs=x)
+    return Model(inputs=inputs, outputs=x)
 
 
 def normalize(input_image, input_mask):
@@ -179,11 +183,11 @@ def create_augmentation_function(hp_brightness_range,
         input_img = tf.image.random_hue(input_img, hue_range)
 
         if tf.random.uniform(()) > gaussian_blur_probs:
-            input_img = gaussian_filter2d(input_img)
+            input_img = gaussian_filter2d(image=input_img, filter_shape=[5, 5])
             if tf.random.uniform(()) > gaussian_blur_probs:
-                input_img = gaussian_filter2d(input_img)
+                input_img = gaussian_filter2d(image=input_img, filter_shape=[5, 5])
                 if tf.random.uniform(()) > gaussian_blur_probs:
-                    input_img = gaussian_filter2d(input_img)
+                    input_img = gaussian_filter2d(image=input_img, filter_shape=[5, 5])
         augmented_img = input_img
 
         # TODO: random crops of reasonable size; the same area must be extracted from input and mask

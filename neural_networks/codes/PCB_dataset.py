@@ -3,7 +3,7 @@ import tensorflow_datasets.public_api as tfds
 import os
 
 # TODO: make generic
-MAIN_PATH = '/home/ribeiro-desktop/POLI/TCC/blender_experiments/datasets/Arduino_3'
+MAIN_PATH = '/home/ribeiro-desktop/POLI/TCC/blender_experiments/datasets/Arduino_3q'
 INPUTS_SUBPATH = 'inputs'
 ANNOTATIONS_SUBPATH = 'annotations'
 MAPS_SUBPATH = 'maps'

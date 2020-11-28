@@ -13,7 +13,8 @@ from .PCB_dataset import PCB
 from .utils import load_image_train, load_image_not_train, create_augmentation_function,\
     normalize_input, create_mask, custom_model, create_unet_model
 from .hyperparameters_and_metrics import FREEZE_FACTOR, LEARNING_RATE, LOSS_FUNCTION, BRIGHTNESS_RANGE,\
-    CONTRAST_MIN_RANGE, CONTRAST_MAX_RANGE, HUE_RANGE, GAUSSIAN_BLUR_PROBS, ACCURACY, PRECISION, RECALL
+    CONTRAST_MIN_RANGE, CONTRAST_MAX_RANGE, HUE_RANGE, GAUSSIAN_BLUR_PROBS, NOISE_STDEV,\
+    ACCURACY, CROSSENTROPY, PRECISION, RECALL
 from tensorboard.plugins.hparams import api as hp
 
 
@@ -29,6 +30,9 @@ def train_and_evaluate(idx, epochs, batch_size, train_length, validation_length,
     gc.collect()
     tf.compat.v1.get_default_graph()._py_funcs_used_in_graph = []
 
+    # Get timestamp back:
+    timestamp = logdir.split("/")[-1]
+
     # Write hyperparameters and metrics to tensorboard
     with tf.summary.create_file_writer(logdir + '/hparam_tuning').as_default():
         hp.hparams_config(
@@ -41,9 +45,11 @@ def train_and_evaluate(idx, epochs, batch_size, train_length, validation_length,
                 HUE_RANGE,
                 GAUSSIAN_BLUR_PROBS,
                 LOSS_FUNCTION,
+                NOISE_STDEV,
             ],
             metrics=[
-                hp.Metric(ACCURACY.name, display_name='Acurácia')
+                hp.Metric(ACCURACY.name, display_name=ACCURACY.name),
+                hp.Metric(CROSSENTROPY.name, display_name=CROSSENTROPY.name),
             ],
         )
 
@@ -69,25 +75,31 @@ def train_and_evaluate(idx, epochs, batch_size, train_length, validation_length,
 
     # TODO: try different feature extractors
     # Define model to be used
-    model = create_unet_model(OUTPUT_CHANNELS, hparams[FREEZE_FACTOR])
+    model = create_unet_model(output_channels=OUTPUT_CHANNELS,
+                              freeze_percentage=hparams[FREEZE_FACTOR],
+                              noise_stdev=hparams[NOISE_STDEV])
 
-    if hparams[LOSS_FUNCTION] == 'sparse_categorical_focal_loss':
+    if hparams[LOSS_FUNCTION] == 'Perda Focal':
         loss_function = SparseCategoricalFocalLoss(gamma=8, from_logits=True, name="Perda_focal")
-    elif hparams[LOSS_FUNCTION] == 'sparse_categorical_crossentropy':
+    elif hparams[LOSS_FUNCTION] == 'Entropia Cruzada':
         loss_function = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True, name="Entropia_cruzada"),
 
     model.compile(optimizer=Adam(learning_rate=hparams[LEARNING_RATE]),
                   loss=loss_function,
-                  metrics=[ACCURACY],  # , PRECISION, RECALL],  # TODO: solve 'ValueError: Shapes (None, 448, 448, 17) and (None, 448, 448, 1) are incompatible'
+                  metrics=[ACCURACY, CROSSENTROPY],  # , PRECISION, RECALL],  # TODO: solve 'ValueError: Shapes (None, 448, 448, 17) and (None, 448, 448, 1) are incompatible'
                   )
 
+    # Hyperparameters writer
+    hp_writer = tf.summary.create_file_writer(logdir + '/hparam_tuning')
+
     # Callbacks
-    current_model_output_path = MODEL_OUTPUT_PATH + str(idx) + '_train/' + datetime.now().strftime("%Y%m%d-%H%M%S")
+    current_model_output_path = MODEL_OUTPUT_PATH + str(idx) + '_train/' + timestamp
     os.makedirs(current_model_output_path, exist_ok=True)
     checkpoint = ModelCheckpoint(filepath=current_model_output_path, save_best_only=True, save_weights_only=True)
-    early_stopping = EarlyStopping(patience=5)
-    reducelronplateau = ReduceLROnPlateau(patience=3, cooldown=4)
+    early_stopping = EarlyStopping(patience=10)
+    reduce_lr_on_plateau = ReduceLROnPlateau(patience=3, cooldown=5)
     tensorboard = TensorBoard(log_dir=logdir, histogram_freq=1, profile_batch=0)
+    hparams_callback = hp.KerasCallback(writer=hp_writer, hparams=hparams, trial_id=timestamp)
 
     # Show some training images samples in Tensorboard
     img_file_writer = tf.summary.create_file_writer(logdir + str("/images"))
@@ -116,11 +128,12 @@ def train_and_evaluate(idx, epochs, batch_size, train_length, validation_length,
               steps_per_epoch=steps_per_epoch,
               validation_data=validation_dataset,
               validation_steps=val_steps,
-              callbacks=[  # DisplayCallback(),
+              callbacks=[
                          checkpoint,
                          early_stopping,
-                         reducelronplateau,
+                         reduce_lr_on_plateau,
                          tensorboard,
+                         hparams_callback,
                          ]
               )
 
@@ -150,14 +163,15 @@ def train_and_evaluate(idx, epochs, batch_size, train_length, validation_length,
     # with img_file_writer.as_default():
     #     tf.summary.image("Exemplos de dados de validação", pred_masks, max_outputs=16, step=0)
 
-    _, validation_accuracy = model.evaluate(validation_dataset)
+    _, validation_accuracy, validation_crossentropy = model.evaluate(validation_dataset)
 
-    with tf.summary.create_file_writer(logdir + '/hparam_tuning').as_default():
+    with hp_writer.as_default():
         hp.hparams(hparams)  # record the values used in this trial
         tf.summary.scalar(ACCURACY.name, validation_accuracy, step=1)
+        tf.summary.scalar(CROSSENTROPY.name, validation_crossentropy, step=1)
 
     # Saves best model
-    model.save(current_model_output_path.replace("_train", "_best") + "_%.4f_" % validation_accuracy)
+    model.save(current_model_output_path.replace("_train", "_best") + "_acc_%.4f__ce_%.4f" % (validation_accuracy, validation_crossentropy))
 
 
 if __name__ == '__main__':
@@ -187,6 +201,7 @@ if __name__ == '__main__':
         cmar = CONTRAST_MAX_RANGE.domain.sample_uniform()
         hr = HUE_RANGE.domain.sample_uniform()
         gbp = GAUSSIAN_BLUR_PROBS.domain.sample_uniform()
+        nstd = NOISE_STDEV.domain.sample_uniform()
 
         hparams = {
             LEARNING_RATE: lr,
@@ -197,6 +212,7 @@ if __name__ == '__main__':
             CONTRAST_MAX_RANGE: cmar,
             HUE_RANGE: hr,
             GAUSSIAN_BLUR_PROBS: gbp,
+            NOISE_STDEV: nstd,
         }
 
         log_directory = "logs/" + str(args.idx) + "/" + datetime.now().strftime("%Y%m%d-%H%M%S")

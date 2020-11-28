@@ -2,8 +2,8 @@ import cv2 as cv
 from glob import glob
 import os
 
-DATASETS_MAIN_PATH = os.path.expanduser("/datasets/")
-SELECTED_DATASET = "Arduino_2"
+DATASETS_MAIN_PATH = os.path.expanduser("./datasets/")
+SELECTED_DATASET = "Arduino_3q"
 
 # TODO: beware of "_whole" directories!
 if __name__ == '__main__':
