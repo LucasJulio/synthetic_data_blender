@@ -5,12 +5,12 @@ from tensorflow.keras.metrics import SparseCategoricalAccuracy, SparseCategorica
 # Hyperparameters
 FREEZE_FACTOR = hp.HParam('Percentual de congelamento', hp.RealInterval(80.0, 100.0))
 LEARNING_RATE = hp.HParam('Taxa de aprendizado', hp.RealInterval(0.0001, 0.01))
-BRIGHTNESS_RANGE = hp.HParam('Variação de brilho', hp.RealInterval(0.0, 0.3))
-CONTRAST_MIN_RANGE = hp.HParam('Variação mínima de contraste', hp.RealInterval(0.6, 1.0))
-CONTRAST_MAX_RANGE = hp.HParam('Variação máxima de contraste', hp.RealInterval(1.0, 1.4))
-HUE_RANGE = hp.HParam('Variação de matiz', hp.RealInterval(0.0, 0.4))
-GAUSSIAN_BLUR_PROBS = hp.HParam('Probabilidades de borramento', hp.RealInterval(0.0, 0.4))
-NOISE_STDEV = hp.HParam('Desvio-padrão de ruído gaussiano', hp.RealInterval(0.001, 0.1))
+BRIGHTNESS_RANGE = hp.HParam('Variação de brilho', hp.RealInterval(0.0, 0.2))
+CONTRAST_MIN_RANGE = hp.HParam('Variação mínima de contraste', hp.RealInterval(0.7, 1.0))
+CONTRAST_MAX_RANGE = hp.HParam('Variação máxima de contraste', hp.RealInterval(1.0, 1.3))
+HUE_RANGE = hp.HParam('Variação de matiz', hp.RealInterval(0.0, 0.3))
+GAUSSIAN_BLUR_PROBS = hp.HParam('Probabilidades de borramento', hp.RealInterval(0.0, 0.3))
+NOISE_STDEV = hp.HParam('Desvio-padrão de ruído gaussiano', hp.RealInterval(0.001, 0.05))
 LOSS_FUNCTION = hp.HParam('Função de perda', hp.Discrete(['Perda Focal',
                                                           'Entropia Cruzada']))
 

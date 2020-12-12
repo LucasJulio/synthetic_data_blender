@@ -54,7 +54,7 @@ def train_and_evaluate(idx, epochs, batch_size, train_length, validation_length,
         )
 
     # Prepare data
-    dataset_builder = PCB()
+    dataset_builder = PCB("Arduino_3q3_bs")
     dataset_builder.download_and_prepare()
     dataset = dataset_builder.as_dataset()
     train_data = dataset['train'].map(load_image_train, num_parallel_calls=tf.data.experimental.AUTOTUNE)
@@ -96,21 +96,20 @@ def train_and_evaluate(idx, epochs, batch_size, train_length, validation_length,
     current_model_output_path = MODEL_OUTPUT_PATH + str(idx) + '_train/' + timestamp
     os.makedirs(current_model_output_path, exist_ok=True)
     checkpoint = ModelCheckpoint(filepath=current_model_output_path, save_best_only=True, save_weights_only=True)
-    early_stopping = EarlyStopping(patience=10)
-    reduce_lr_on_plateau = ReduceLROnPlateau(patience=3, cooldown=5)
+    early_stopping = EarlyStopping(patience=7)
+    reduce_lr_on_plateau = ReduceLROnPlateau(patience=4, cooldown=5, min_delta=1e-5, factor=0.5)
     tensorboard = TensorBoard(log_dir=logdir, histogram_freq=1, profile_batch=0)
     hparams_callback = hp.KerasCallback(writer=hp_writer, hparams=hparams, trial_id=timestamp)
 
     # Show some training images samples in Tensorboard
     img_file_writer = tf.summary.create_file_writer(logdir + str("/images"))
-    train_data_sample = train_data.batch(batch_size)
+    train_data_sample = train_dataset.take(16)
 
     with img_file_writer.as_default():
-        for im, msk in train_data_sample.take(4):
-            tf.summary.image("Entradas de treino", im, max_outputs=4, step=0,
+        for im, msk in train_data_sample:
+            tf.summary.image("Entradas de treino", im, max_outputs=16, step=0,
                              description="Dados de entrada utilizados para treinamento, sujeitos a augmentation")
-            # TODO: tf.image.rgb_to_hsv(tf.image.grayscale_to_rgb(msk))
-            tf.summary.image("Máscaras de treino", msk / 16, max_outputs=4, step=0,
+            tf.summary.image("Máscaras de treino", msk / 16, max_outputs=16, step=0,
                              description="Dados de rotulação utilizados para treinamento, sujeitos a augmentation")
 
     #TODO: imgfix

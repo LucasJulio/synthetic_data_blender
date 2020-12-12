@@ -3,7 +3,7 @@ import tensorflow_datasets.public_api as tfds
 import os
 
 # TODO: make generic
-MAIN_PATH = '/home/ribeiro-desktop/POLI/TCC/blender_experiments/datasets/Arduino_3q'
+MAIN_PATH = '/home/ribeiro-desktop/POLI/TCC/blender_experiments/datasets/'
 INPUTS_SUBPATH = 'inputs'
 ANNOTATIONS_SUBPATH = 'annotations'
 MAPS_SUBPATH = 'maps'
@@ -16,6 +16,9 @@ class PCB(tfds.core.GeneratorBasedBuilder):
     PCB synthetic images dataset
     """
 
+    def __init__(self, dataset_name):
+        super().__init__()
+        self.full_path = MAIN_PATH + dataset_name
     VERSION = tfds.core.Version("0.1.0")
 
     def _info(self):
@@ -31,8 +34,8 @@ class PCB(tfds.core.GeneratorBasedBuilder):
         )
 
     def _split_generators(self, dl_manager):
-        images_path_dir = os.path.join(MAIN_PATH, INPUTS_SUBPATH)
-        annotations_path_dir = os.path.join(MAIN_PATH, ANNOTATIONS_SUBPATH)
+        images_path_dir = os.path.join(self.full_path, INPUTS_SUBPATH)
+        annotations_path_dir = os.path.join(self.full_path, ANNOTATIONS_SUBPATH)
 
         # Setup train and test splits
         train_split = tfds.core.SplitGenerator(
@@ -65,7 +68,7 @@ class PCB(tfds.core.GeneratorBasedBuilder):
                 map_name = "m_" + image_name + ".png"
                 input_name = "i_" + image_name + ".png"
 
-                maps_dir_path = os.path.join(MAIN_PATH, MAPS_SUBPATH)
+                maps_dir_path = os.path.join(self.full_path, MAPS_SUBPATH)
                 record = {
                     "file_name": input_name,
                     "image": os.path.join(images_dir_path, input_name),

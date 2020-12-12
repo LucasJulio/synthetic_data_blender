@@ -1,7 +1,10 @@
+import os
+import time
 import tensorflow as tf
-import cv2
+import cv2 as cv
 import numpy as np
 from PIL import Image
+from neural_networks.codes.utils import blur_then_sharpen
 
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -17,10 +20,33 @@ if gpus:
         print(e)
 
 
-cap = cv2.VideoCapture(0)
+cap = cv.VideoCapture(0)
+cam_width = 1920
+cam_height = 1080
+cap.set(cv.CAP_PROP_FRAME_WIDTH, cam_width)
+cap.set(cv.CAP_PROP_FRAME_HEIGHT, cam_height)
 
-# TODO: specify model when running
-model_path = "/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/logs/11-23--12-50"
+input_width = 896
+input_height = 896
+
+display_size = (448, 448)
+
+def crop_img_to_center(img, target_width, target_height):
+    return img[((cam_height//2) - target_height//2): ((cam_height//2) + target_height//2),
+               ((cam_width//2) - target_width//2): ((cam_width//2) + target_width//2)]
+
+
+os.system("v4l2-ctl -c focus_auto=0")
+os.system("v4l2-ctl -c focus_absolute=24")
+os.system("v4l2-ctl -c zoom_absolute=100")
+os.system("v4l2-ctl -c backlight_compensation=0")
+os.system("v4l2-ctl -c exposure_auto=3")
+os.system("v4l2-ctl -c gain=0")
+
+# model_path = "/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/codes/Models/" \
+#              "Trained/6_best/20201207-213732_acc_0.9990__ce_0.0031"  # Great results!
+model_path = "/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/codes/Models/" \
+             "Trained/7_best/20201210-110420_acc_0.9968__ce_0.0092"
 model = tf.keras.models.load_model(model_path, compile=False)
 
 
@@ -46,15 +72,30 @@ def inference_on_image(im, classifier_model):
     p_mask = create_mask(classifier_model.predict(pre_processed_input))
     return p_mask
 
-
+BLUR_THEN_SHARPEN_ITERS = 4
+true_mask = cv.imread("/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/codes/true_mask.png",
+                      flags=cv.IMREAD_GRAYSCALE)
+true_mask_resized = cv.resize(np.expand_dims(true_mask, axis=-1), (448, 448))
+hue_true_mask = true_mask.astype(np.uint8) * (180//17)
+saturation_value = np.ones_like(hue_true_mask) * 255
+saturation_value = saturation_value.astype(np.uint8)
+true_mask_display = cv.merge((hue_true_mask, saturation_value, saturation_value)).astype(np.uint8)
+true_mask_display = cv.cvtColor(true_mask_display, cv.COLOR_HSV2RGB)
+true_mask_display_resized = cv.resize(true_mask_display, display_size)
+# i = 0
 while True:
     # Capture frame-by-frame
     ret, frame = cap.read()
+    frame = crop_img_to_center(frame, target_width=input_width, target_height=input_height)
 
     # Our operations on the frame come here
-    img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    pred_mask = np.asarray(inference_on_image(img_rgb, model))
+    img_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+    if BLUR_THEN_SHARPEN_ITERS > 0:
+        img_rgb_preproc = blur_then_sharpen(img_rgb, iters=BLUR_THEN_SHARPEN_ITERS)
+    else:
+        img_rgb_preproc = img_rgb
 
+    pred_mask = np.asarray(inference_on_image(img_rgb_preproc, model))
     # Convert to Hue channel for HSV visualization
     hue_pred_mask = pred_mask.astype(np.uint8) * (180//17)
     saturation_value = np.ones_like(pred_mask) * 255
@@ -80,16 +121,33 @@ while True:
     240---------------------16_Polyfuse
     """
 
-    pred_mask_display = cv2.merge((hue_pred_mask, saturation_value, saturation_value)).astype(np.uint8)
-    pred_mask_display = cv2.cvtColor(pred_mask_display, cv2.COLOR_HSV2RGB)
-    img_resized = cv2.resize(frame, (896, 896))
-    pred_mask_display = cv2.resize(pred_mask_display, (896, 896))
-    display = np.hstack([img_resized, pred_mask_display])
+    pred_mask_display = cv.merge((hue_pred_mask, saturation_value, saturation_value)).astype(np.uint8)
+    pred_mask_display = cv.cvtColor(pred_mask_display, cv.COLOR_HSV2RGB)
+    img_resized = cv.resize(frame, display_size)
+    pred_mask_display_resized = cv.resize(pred_mask_display, display_size)
+    # img_rgb_preproc_resized = cv.resize(img_rgb_preproc, display_size)
+    img_mask_diff = cv.subtract(true_mask_resized, pred_mask.astype(np.uint8))
+    img_resized_added = cv.addWeighted(img_resized, 0.7, true_mask_display_resized, 0.3, 0)
+    display_1 = np.hstack([img_resized_added, true_mask_display_resized])
+    img_mask_diff_resized = cv.resize(img_mask_diff, display_size)
+    img_mask_diff_resized = cv.threshold(img_mask_diff_resized, 1, 255, type=cv.THRESH_BINARY)[1]
+    img_mask_diff_resized_merged = cv.merge((img_mask_diff_resized, img_mask_diff_resized, img_mask_diff_resized))
+    display_2 = np.hstack([img_mask_diff_resized_merged, pred_mask_display_resized])
+    display = np.vstack([display_1, display_2])
+    # display = frame
     # Display the resulting frame
-    cv2.imshow('frame', display)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    cv.imshow('frame', display)
+    BLUR_THEN_SHARPEN_ITERS += 1
+    BLUR_THEN_SHARPEN_ITERS %= 5
+    time.sleep(0.1)
+    # filename = "input_%s.png" % str(i)
+    # cv.imwrite(filename, frame)
+    # filename = "output_%s.png" % str(i)
+    # cv.imwrite(filename, pred_mask)
+    # i += 1
+    if cv.waitKey(1) & 0xFF == ord('q'):
         break
 
 # When everything done, release the capture
 cap.release()
-cv2.destroyAllWindows()
+cv.destroyAllWindows()

@@ -7,6 +7,7 @@ import numpy as np
 from PIL import Image
 from matplotlib import pyplot as plt
 from tensorflow_addons.image import gaussian_filter2d
+from cv2 import GaussianBlur
 
 
 def upsample(filters, size, apply_dropout=False):
@@ -56,7 +57,7 @@ def create_unet_model(output_channels, freeze_percentage, noise_stdev, base_mode
     layers = [base_model.get_layer(name).output for name in layer_names]
     # Create the feature extraction model
     down_stack = tf.keras.Model(inputs=base_model.input, outputs=layers)
-    # down_stack.trainable = False  # TODO: use freeze_percentage
+    # down_stack.trainable = False
     # Freeze first layers
     for l_idx, layer in enumerate(down_stack.layers):
         if l_idx < np.ceil((freeze_percentage / 100) * len(down_stack.layers)) or \
@@ -121,7 +122,7 @@ def custom_model(output_channels):
 
     initializer = tf.random_normal_initializer(0., 0.02)
     last = Conv2DTranspose(output_channels, 4, strides=2, padding='same', kernel_initializer=initializer
-                                           , activation='tanh')  # (bs, 256, 256, 3)
+                           , activation='tanh')  # (bs, 256, 256, 3)
 
     x = inputs
 
@@ -284,3 +285,25 @@ class DisplayCallback(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         show_predictions()
         print('\nSample Prediction after epoch {}\n'.format(epoch+1))
+
+
+def unsharp_mask(image, kernel_size=(7, 7), sigma=1.5, amount=1.5, threshold=0):
+    """Return a sharpened version of the image, using an unsharp mask."""
+    blurred = GaussianBlur(image, kernel_size, sigma)
+    sharpened = float(amount + 1) * image - float(amount) * blurred
+    sharpened = np.maximum(sharpened, np.zeros(sharpened.shape))
+    sharpened = np.minimum(sharpened, 255 * np.ones(sharpened.shape))
+    sharpened = sharpened.round().astype(np.uint8)
+    if threshold > 0:
+        low_contrast_mask = np.absolute(image - blurred) < threshold
+        np.copyto(sharpened, image, where=low_contrast_mask)
+    return sharpened
+
+
+def blur_then_sharpen(im, iters):
+    for _ in range(iters):
+        im = GaussianBlur(im, (7, 7), 1.5)
+    for _ in range(iters):
+        im = unsharp_mask(im)
+    im = GaussianBlur(im, (3, 3), 1.5)
+    return im

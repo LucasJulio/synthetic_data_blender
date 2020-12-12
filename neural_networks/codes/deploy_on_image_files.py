@@ -5,6 +5,7 @@ import numpy as np
 from PIL import Image
 from glob import glob
 from time import sleep
+from neural_networks.codes.utils import blur_then_sharpen
 
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
@@ -18,10 +19,13 @@ if gpus:
         # Memory growth must be set before GPUs have been initialized
         print(e)
 
-root_img_directory = "/home/ribeiro-desktop/POLI/TCC/blender_experiments/datasets/evaluation/macro_DSLR_best/"
+root_img_directory = "/home/ribeiro-desktop/POLI/TCC/blender_experiments/datasets/" \
+                     "evaluation/labeled/macro_dslr_best_inputs/"
+# root_img_directory = "/home/ribeiro-desktop/POLI/TCC/blender_experiments/datasets/" \
+#                      "evaluation/erik_camera/"
 img_files_paths = glob(root_img_directory + "*")
-model = load_model("/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/logs/11-23--12-50",
-                   compile=False)
+model = load_model("/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/codes/Models/"
+                   "Trained/6_best/20201207-213732_acc_0.9990__ce_0.0031", compile=False)
 
 
 def normalize_input(input_image):
@@ -47,12 +51,18 @@ def inference_on_image(im, classifier_model):
     return p_mask
 
 
+BLUR_THEN_SHARPEN_ITERS = 4
+
 while True:
     for img_path in img_files_paths:
         frame = cv.imread(img_path)
 
         # Our operations on the frame come here
         img_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+
+        if BLUR_THEN_SHARPEN_ITERS > 0:
+            img_rgb = blur_then_sharpen(img_rgb, iters=BLUR_THEN_SHARPEN_ITERS)
+
         pred_mask = np.asarray(inference_on_image(img_rgb, model))
 
         # Convert to Hue channel for HSV visualization
