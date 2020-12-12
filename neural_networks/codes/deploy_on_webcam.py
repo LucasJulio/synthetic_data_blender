@@ -31,6 +31,7 @@ input_height = 896
 
 display_size = (448, 448)
 
+
 def crop_img_to_center(img, target_width, target_height):
     return img[((cam_height//2) - target_height//2): ((cam_height//2) + target_height//2),
                ((cam_width//2) - target_width//2): ((cam_width//2) + target_width//2)]
@@ -73,16 +74,27 @@ def inference_on_image(im, classifier_model):
     return p_mask
 
 BLUR_THEN_SHARPEN_ITERS = 4
-true_mask = cv.imread("/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/codes/true_mask.png",
+
+# Manages true mask
+true_mask = cv.imread("/home/ribeiro-desktop/POLI/TCC/blender_experiments/neural_networks/codes/old_eroded.png",
                       flags=cv.IMREAD_GRAYSCALE)
-true_mask_resized = cv.resize(np.expand_dims(true_mask, axis=-1), (448, 448))
+true_mask_resized = cv.resize(np.expand_dims(true_mask, axis=-1), display_size).astype(np.uint8)
 hue_true_mask = true_mask.astype(np.uint8) * (180//17)
 saturation_value = np.ones_like(hue_true_mask) * 255
 saturation_value = saturation_value.astype(np.uint8)
 true_mask_display = cv.merge((hue_true_mask, saturation_value, saturation_value)).astype(np.uint8)
 true_mask_display = cv.cvtColor(true_mask_display, cv.COLOR_HSV2RGB)
 true_mask_display_resized = cv.resize(true_mask_display, display_size)
-# i = 0
+
+# Prepare accumulator
+accum = np.expand_dims(np.ones(display_size).astype(np.uint8), axis=-1)
+
+# Miscelaneous
+saturation_value = np.ones(display_size) * 255
+saturation_value = saturation_value.astype(np.uint8)
+zeros_channel = saturation_value * 0
+components_mask_highlight_channel = cv.threshold(true_mask_resized, 1, 80, type=cv.THRESH_BINARY)[1]
+
 while True:
     # Capture frame-by-frame
     ret, frame = cap.read()
@@ -95,11 +107,10 @@ while True:
     else:
         img_rgb_preproc = img_rgb
 
-    pred_mask = np.asarray(inference_on_image(img_rgb_preproc, model))
+    pred_mask = np.asarray(inference_on_image(img_rgb_preproc, model)).astype(np.uint8)
     # Convert to Hue channel for HSV visualization
     hue_pred_mask = pred_mask.astype(np.uint8) * (180//17)
-    saturation_value = np.ones_like(pred_mask) * 255
-    saturation_value = saturation_value.astype(np.uint8)
+
     """
     PIXEL_VALUE ---------- CORRESPONDING_CLASS 
     000---------------------0_Background
@@ -125,26 +136,39 @@ while True:
     pred_mask_display = cv.cvtColor(pred_mask_display, cv.COLOR_HSV2RGB)
     img_resized = cv.resize(frame, display_size)
     pred_mask_display_resized = cv.resize(pred_mask_display, display_size)
-    # img_rgb_preproc_resized = cv.resize(img_rgb_preproc, display_size)
-    img_mask_diff = cv.subtract(true_mask_resized, pred_mask.astype(np.uint8))
+    img_mask_diff = cv.subtract(true_mask_resized, pred_mask)
     img_resized_added = cv.addWeighted(img_resized, 0.7, true_mask_display_resized, 0.3, 0)
-    display_1 = np.hstack([img_resized_added, true_mask_display_resized])
-    img_mask_diff_resized = cv.resize(img_mask_diff, display_size)
-    img_mask_diff_resized = cv.threshold(img_mask_diff_resized, 1, 255, type=cv.THRESH_BINARY)[1]
-    img_mask_diff_resized_merged = cv.merge((img_mask_diff_resized, img_mask_diff_resized, img_mask_diff_resized))
-    display_2 = np.hstack([img_mask_diff_resized_merged, pred_mask_display_resized])
+    # display_1 = np.hstack([img_resized_added, true_mask_display_resized])
+    display_1 = np.hstack([img_resized, img_resized_added])
+
+    # img_rgb_preproc_resized = cv.resize(img_rgb_preproc, display_size)
+
+    # img_mask_diff_resized = cv.resize(img_mask_diff, display_size)
+    # img_mask_diff_resized = cv.threshold(img_mask_diff_resized, 1, 255, type=cv.THRESH_BINARY)[1]
+    # img_mask_diff_resized_merged = cv.merge((img_mask_diff_resized, img_mask_diff_resized, img_mask_diff_resized))
+
+    # check where image gets correct result
+    correct_predictions = cv.bitwise_and(pred_mask, true_mask_resized)
+    # store correct predictions on accumulator
+    accum = cv.bitwise_or(accum, correct_predictions)
+    accum_display = cv.threshold(accum, 1, 255, type=cv.THRESH_BINARY)[1]
+    accum_display = cv.merge((accum_display, zeros_channel, components_mask_highlight_channel))
+    display_2 = np.hstack([accum_display, pred_mask_display_resized])
+
     display = np.vstack([display_1, display_2])
     # display = frame
     # Display the resulting frame
     cv.imshow('frame', display)
     BLUR_THEN_SHARPEN_ITERS += 1
     BLUR_THEN_SHARPEN_ITERS %= 5
-    time.sleep(0.1)
+    # time.sleep(0.1)
     # filename = "input_%s.png" % str(i)
     # cv.imwrite(filename, frame)
     # filename = "output_%s.png" % str(i)
     # cv.imwrite(filename, pred_mask)
     # i += 1
+    if cv.waitKey(1) & 0xFF == ord('r'):  # RESET accumulator
+        accum = np.expand_dims(np.ones(display_size).astype(np.uint8), axis=-1)
     if cv.waitKey(1) & 0xFF == ord('q'):
         break
 
